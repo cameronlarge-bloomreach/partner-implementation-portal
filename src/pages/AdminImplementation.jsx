@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getAllImplementations, updateDates, updateTouchPoint } from '../api'
+import { getAllImplementations, updateDates, updateTouchPoint, addAccess, removeAccess } from '../api'
 import Navbar from '../components/Navbar'
 
 const DATE_FIELDS = [
@@ -72,8 +72,7 @@ function ProgressRing({ pct, size = 64, stroke = 5, color = '#FFD500' }) {
 }
 
 export default function AdminImplementation({ credential, userInfo, onLogout }) {
-  const { email } = useParams()
-  const decodedEmail = decodeURIComponent(email)
+  const { id } = useParams()
 
   const [implementation, setImplementation] = useState(null)
   const [dates, setDates] = useState({})
@@ -81,10 +80,12 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [savingDates, setSavingDates] = useState(false)
   const [saved, setSaved] = useState(false)
   const [savingTP, setSavingTP] = useState(null)
+  const [newAccessEmail, setNewAccessEmail] = useState('')
+  const [addingAccess, setAddingAccess] = useState(false)
 
   useEffect(() => {
     getAllImplementations(credential).then(data => {
-      const impl = (data || []).find(i => i.email === decodedEmail)
+      const impl = (Array.isArray(data) ? data : []).find(i => i.id === id)
       if (impl) {
         setImplementation(impl)
         const d = {}
@@ -93,12 +94,12 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
       }
       setLoading(false)
     })
-  }, [decodedEmail])
+  }, [id])
 
   async function saveDates(e) {
     e.preventDefault()
     setSavingDates(true)
-    await updateDates(credential, decodedEmail, dates)
+    await updateDates(credential, id, dates)
     setSavingDates(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -107,7 +108,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   async function handleTPChange(key, status) {
     setSavingTP(key)
     try {
-      await updateTouchPoint(credential, decodedEmail, key, status)
+      await updateTouchPoint(credential, id, key, status)
       setImplementation(prev => ({ ...prev, touchPoints: { ...prev.touchPoints, [key]: status } }))
     } catch { /* silent */ }
     setSavingTP(null)
@@ -116,10 +117,30 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   async function handleQAChange(key, status) {
     setSavingTP(key)
     try {
-      await updateTouchPoint(credential, decodedEmail, key, status)
+      await updateTouchPoint(credential, id, key, status)
       setImplementation(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [key]: status } }))
     } catch { /* silent */ }
     setSavingTP(null)
+  }
+
+  async function handleAddAccess(e) {
+    e.preventDefault()
+    const newEmail = newAccessEmail.trim().toLowerCase()
+    if (!newEmail) return
+    setAddingAccess(true)
+    try {
+      await addAccess(credential, id, newEmail)
+      setImplementation(prev => ({ ...prev, accessEmails: [...(prev.accessEmails || []), newEmail] }))
+      setNewAccessEmail('')
+    } catch { /* silent */ }
+    setAddingAccess(false)
+  }
+
+  async function handleRemoveAccess(emailToRemove) {
+    try {
+      await removeAccess(credential, id, emailToRemove)
+      setImplementation(prev => ({ ...prev, accessEmails: (prev.accessEmails || []).filter(e => e !== emailToRemove) }))
+    } catch { /* silent */ }
   }
 
   if (loading) return (
@@ -156,7 +177,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
               <Link to="/admin" className="text-xs text-[#019ACE] hover:text-[#017aaa] font-medium">← All partners</Link>
               <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mt-3 mb-1">{implementation.partner_name}</p>
               <h1 className="text-2xl font-bold text-slate-900">{implementation.client_name}</h1>
-              <p className="text-sm text-slate-400 mt-1">{decodedEmail}</p>
+              <p className="text-sm text-slate-400 mt-1">{(implementation.accessEmails || []).join(', ') || 'No partner access granted yet'}</p>
             </div>
             <div className="flex items-center gap-8 sm:gap-10">
               <div className="flex flex-col items-center gap-1">
@@ -247,6 +268,40 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
               })}
             </div>
           </div>
+        </div>
+
+        {/* Partner Access */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide mb-4">Partner Access</h2>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(implementation.accessEmails || []).length === 0 ? (
+              <span className="text-sm text-slate-400">No partner access granted yet.</span>
+            ) : (
+              implementation.accessEmails.map(email => (
+                <span key={email} className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 text-xs font-medium pl-2.5 pr-1.5 py-1 rounded-full">
+                  {email}
+                  <button onClick={() => handleRemoveAccess(email)} className="text-slate-400 hover:text-red-500 leading-none">×</button>
+                </span>
+              ))
+            )}
+          </div>
+          <form onSubmit={handleAddAccess} className="flex gap-2 max-w-sm">
+            <input
+              type="email"
+              required
+              value={newAccessEmail}
+              onChange={e => setNewAccessEmail(e.target.value)}
+              placeholder="partner@company.com"
+              className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
+            />
+            <button
+              type="submit"
+              disabled={addingAccess}
+              className="bg-[#FFD500] hover:bg-[#e6bf00] disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+            >
+              {addingAccess ? 'Adding…' : 'Grant access'}
+            </button>
+          </form>
         </div>
 
         {/* Row 2: QA + RAID */}

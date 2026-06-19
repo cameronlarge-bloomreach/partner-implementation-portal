@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { GoogleLogin } from '@react-oauth/google'
-import { getMyImplementation, requestMagicLink } from '../api'
+import { getMyImplementations, requestMagicLink } from '../api'
 import bloomreachLogo from '../assets/bloomreach-logo.png'
 
 function parseJwt(token) {
@@ -20,9 +20,9 @@ export default function Login({ onLogin }) {
     setError(null)
     try {
       const decoded = parseJwt(response.credential)
-      const data = await getMyImplementation(response.credential)
+      const data = await getMyImplementations(response.credential)
 
-      if (data.error === 'unauthorized') {
+      if (data.error) {
         setError('Your Google account is not registered as a partner. Please contact your Bloomreach representative.')
         setLoading(false)
         return
@@ -33,6 +33,7 @@ export default function Login({ onLogin }) {
         name: decoded.name,
         picture: decoded.picture,
         isAdmin: data.isAdmin,
+        implementations: data.implementations,
       })
     } catch (e) {
       setError('Something went wrong. Please try again.')
@@ -46,8 +47,10 @@ export default function Login({ onLogin }) {
     setError(null)
     try {
       const res = await requestMagicLink(email)
-      if (res.error) {
+      if (res.error === 'unauthorized') {
         setError('That email is not registered as a partner. Please contact your Bloomreach representative.')
+      } else if (res.error) {
+        setError(res.error)
       } else {
         setMagicSent(true)
       }

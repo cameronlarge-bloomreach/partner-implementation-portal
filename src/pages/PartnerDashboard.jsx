@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getMyImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem } from '../api'
+import { useParams, Link } from 'react-router-dom'
+import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem } from '../api'
 import Navbar from '../components/Navbar'
 
 const TOUCH_POINTS = [
@@ -94,6 +95,7 @@ function StatusSelect({ value, onChange, disabled, saving }) {
 }
 
 export default function PartnerDashboard({ credential, userInfo, onLogout }) {
+  const { id } = useParams()
   const [impl, setImpl] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
@@ -105,13 +107,18 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   const [editingRaid, setEditingRaid] = useState(null)
   const [editRaidData, setEditRaidData] = useState({})
 
-  useEffect(() => { fetchData() }, [])
+  useEffect(() => { fetchData() }, [id])
 
   async function fetchData() {
+    setLoading(true)
     try {
-      const data = await getMyImplementation(credential)
-      setImpl(data)
-      setRaidItems(data.raid || [])
+      const data = await getImplementation(credential, id)
+      if (data.error) {
+        setError('You do not have access to this implementation.')
+      } else {
+        setImpl(data)
+        setRaidItems(data.raid || [])
+      }
     } catch {
       setError('Failed to load your implementation. Please refresh.')
     }
@@ -121,7 +128,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   async function handleTPChange(key, status) {
     setSaving(key)
     try {
-      await updateTouchPoint(credential, userInfo.email, key, status)
+      await updateTouchPoint(credential, id, key, status)
       setImpl(p => ({ ...p, touchPoints: { ...p.touchPoints, [key]: status } }))
     } catch { setError('Failed to save.') }
     setSaving(null)
@@ -130,7 +137,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   async function handleQAChange(key, status) {
     setSaving(key)
     try {
-      await updateTouchPoint(credential, userInfo.email, key, status)
+      await updateTouchPoint(credential, id, key, status)
       setImpl(p => ({ ...p, qaSteps: { ...p.qaSteps, [key]: status } }))
     } catch { setError('Failed to save.') }
     setSaving(null)
@@ -141,7 +148,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
     if (!newRaid.title.trim()) return
     setAddingRaid(true)
     try {
-      const res = await addRaidItem(credential, userInfo.email, newRaid)
+      const res = await addRaidItem(credential, id, newRaid)
       setRaidItems(p => [...p, { ...newRaid, id: res.id, raised_date: new Date().toISOString().slice(0, 10) }])
       setNewRaid(EMPTY_RAID)
       setShowAddRaid(false)
@@ -195,7 +202,10 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
-              <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mb-1">{impl?.partner_name}</p>
+              {userInfo?.implementations?.length > 1 && (
+                <Link to="/select" className="text-xs text-[#019ACE] hover:text-[#017aaa] font-medium">← My implementations</Link>
+              )}
+              <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mb-1 mt-1">{impl?.partner_name}</p>
               <h1 className="text-2xl font-bold text-slate-900">{impl?.client_name}</h1>
               <p className="text-sm text-slate-400 mt-1">Implementation Overview</p>
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { verifyMagicLink } from '../api'
+import { verifyMagicLink, getMyImplementations } from '../api'
 
 export default function VerifyMagicLink({ onLogin }) {
   const [params] = useSearchParams()
@@ -17,15 +17,21 @@ export default function VerifyMagicLink({ onLogin }) {
     }
 
     verifyMagicLink(email, token)
-      .then(data => {
+      .then(async data => {
         if (data.error || !data.sessionToken) {
+          setError('This link is invalid or has expired. Please request a new one.')
+          return
+        }
+        const info = await getMyImplementations(data.sessionToken)
+        if (info.error) {
           setError('This link is invalid or has expired. Please request a new one.')
           return
         }
         onLogin(data.sessionToken, {
           email: data.email,
           name: data.email,
-          isAdmin: data.isAdmin,
+          isAdmin: info.isAdmin,
+          implementations: info.implementations,
         })
         navigate('/', { replace: true })
       })

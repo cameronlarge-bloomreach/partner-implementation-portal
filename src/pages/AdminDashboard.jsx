@@ -31,7 +31,7 @@ function getQAProgress(impl) {
   return Math.round((complete / QA_KEYS.length) * 100)
 }
 
-const EMPTY_FORM = { email: '', partner_name: '', client_name: '' }
+const EMPTY_FORM = { emails: '', partner_name: '', client_name: '' }
 
 export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [implementations, setImplementations] = useState([])
@@ -45,7 +45,10 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 
   useEffect(() => {
     getAllImplementations(credential)
-      .then(data => setImplementations(data || []))
+      .then(data => {
+        if (data?.error) setError('Failed to load implementations.')
+        else setImplementations(data || [])
+      })
       .catch(() => setError('Failed to load implementations.'))
       .finally(() => setLoading(false))
   }, [])
@@ -56,13 +59,15 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
     setAddError(null)
     try {
       const res = await addImplementation(credential, form)
-      if (res.error === 'already_exists') {
-        setAddError('An implementation with that email already exists.')
+      if (res.error) {
+        setAddError(res.error)
       } else {
+        const emails = form.emails.split(',').map(s => s.trim()).filter(Boolean)
         setImplementations(prev => [...prev, {
-          email: form.email,
+          id: res.id,
           partner_name: form.partner_name,
           client_name: form.client_name,
+          accessEmails: emails,
           touchPoints: {},
           qaSteps: {},
           raid: [],
@@ -104,13 +109,13 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             <h2 className="text-base font-semibold text-slate-900 mb-4">Add new partner implementation</h2>
             <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Partner email *</label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Partner email(s) *</label>
                 <input
-                  type="email"
+                  type="text"
                   required
-                  value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder=""
+                  value={form.emails}
+                  onChange={e => setForm(f => ({ ...f, emails: e.target.value }))}
+                  placeholder="jane@partner.com, alex@partner.com"
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
                 />
               </div>
@@ -212,11 +217,11 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   const qa = getQAProgress(impl)
                   const openRaid = (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
                   return (
-                    <tr key={impl.email} className="hover:bg-slate-50 transition-colors">
+                    <tr key={impl.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-4">
                         <div className="font-medium text-slate-900">{impl.client_name}</div>
                         <div className="text-xs text-slate-500">{impl.partner_name}</div>
-                        <div className="text-xs text-slate-400">{impl.email}</div>
+                        <div className="text-xs text-slate-400">{(impl.accessEmails || []).join(', ')}</div>
                         {openRaid > 0 && (
                           <span className="inline-block mt-1 text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">
                             {openRaid} open RAID
@@ -250,7 +255,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                       </td>
                       <td className="px-5 py-4 text-right">
                         <Link
-                          to={`/admin/implementation/${encodeURIComponent(impl.email)}`}
+                          to={`/admin/implementation/${impl.id}`}
                           className="text-[#019ACE] hover:text-[#017aaa] font-medium"
                         >
                           View →

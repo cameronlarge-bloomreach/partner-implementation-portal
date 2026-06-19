@@ -1,6 +1,7 @@
 // All calls go through the Apps Script Web App URL.
-// The Google ID token is sent with every request so Apps Script
-// can verify the caller and enforce data isolation server-side.
+// The auth token (Google ID token or magic-link session token) is sent
+// with every request so Apps Script can verify the caller and enforce
+// data isolation server-side.
 
 const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL
 
@@ -23,36 +24,48 @@ async function post(body) {
   return res.json()
 }
 
-export async function getMyImplementation(idToken) {
-  return request({ action: 'getImplementation', token: idToken })
+export async function getMyImplementations(token) {
+  return request({ action: 'getMyImplementations', token })
 }
 
-export async function updateTouchPoint(idToken, implementationEmail, key, status) {
-  return post({ action: 'updateTouchPoint', token: idToken, email: implementationEmail, key, status })
+export async function getImplementation(token, implementationId) {
+  return request({ action: 'getImplementation', token, implementationId })
 }
 
-export async function getAllImplementations(idToken) {
-  return request({ action: 'getAllImplementations', token: idToken })
+export async function getAllImplementations(token) {
+  return request({ action: 'getAllImplementations', token })
 }
 
-export async function updateDates(idToken, email, dates) {
-  return post({ action: 'updateDates', token: idToken, email, dates })
+export async function updateTouchPoint(token, implementationId, key, status) {
+  return post({ action: 'updateTouchPoint', token, implementationId, key, status })
 }
 
-export async function addRaidItem(idToken, email, item) {
-  return post({ action: 'addRaidItem', token: idToken, email, item })
+export async function updateDates(token, implementationId, dates) {
+  return post({ action: 'updateDates', token, implementationId, dates })
 }
 
-export async function updateRaidItem(idToken, id, fields) {
-  return post({ action: 'updateRaidItem', token: idToken, id, fields })
+export async function addRaidItem(token, implementationId, item) {
+  return post({ action: 'addRaidItem', token, implementationId, item })
 }
 
-export async function deleteRaidItem(idToken, id) {
-  return post({ action: 'deleteRaidItem', token: idToken, id })
+export async function updateRaidItem(token, id, fields) {
+  return post({ action: 'updateRaidItem', token, id, fields })
 }
 
-export async function addImplementation(idToken, data) {
-  return post({ action: 'addImplementation', token: idToken, data })
+export async function deleteRaidItem(token, id) {
+  return post({ action: 'deleteRaidItem', token, id })
+}
+
+export async function addImplementation(token, data) {
+  return post({ action: 'addImplementation', token, data })
+}
+
+export async function addAccess(token, implementationId, email) {
+  return post({ action: 'addAccess', token, implementationId, email })
+}
+
+export async function removeAccess(token, implementationId, email) {
+  return post({ action: 'removeAccess', token, implementationId, email })
 }
 
 export async function requestMagicLink(email) {
