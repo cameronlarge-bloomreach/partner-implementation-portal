@@ -84,8 +84,9 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           <Link to="/admin" className="text-sm text-violet-600 hover:text-violet-800">← All partners</Link>
           <div className="flex items-start justify-between mt-3">
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">{implementation.partner_name}</h1>
-              <p className="text-xs text-slate-400 mt-0.5">{decodedEmail}</p>
+              <h1 className="text-xl font-semibold text-slate-900">{implementation.client_name}</h1>
+              <p className="text-sm text-slate-500 mt-0.5">{implementation.partner_name}</p>
+              <p className="text-xs text-slate-400">{decodedEmail}</p>
             </div>
             <div className="text-right">
               <div className="text-2xl font-bold text-violet-600">{overallProgress}%</div>

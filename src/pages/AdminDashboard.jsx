@@ -81,7 +81,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   return (
                     <tr key={impl.email} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-4">
-                        <div className="font-medium text-slate-900">{impl.partner_name}</div>
+                        <div className="font-medium text-slate-900">{impl.client_name}</div>
+                        <div className="text-xs text-slate-500">{impl.partner_name}</div>
                         <div className="text-xs text-slate-400">{impl.email}</div>
                       </td>
                       <td className="px-5 py-4 text-slate-600">{formatDate(impl.contract_sign_date)}</td>

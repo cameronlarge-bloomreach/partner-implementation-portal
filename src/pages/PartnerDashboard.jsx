@@ -98,8 +98,8 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">{implementation?.partner_name}</h1>
-              <p className="text-slate-500 text-sm mt-1">Implementation Overview</p>
+              <h1 className="text-xl font-semibold text-slate-900">{implementation?.client_name}</h1>
+              <p className="text-slate-500 text-sm mt-1">{implementation?.partner_name} — Implementation Overview</p>
             </div>
             <div className="text-right">
               <div className="text-2xl font-bold text-violet-600">{overallProgress}%</div>
