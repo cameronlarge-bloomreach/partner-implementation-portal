@@ -204,6 +204,40 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           </div>
         </div>
 
+        {/* Partner Access */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide mb-4">Partner Access</h2>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {(implementation.accessEmails || []).length === 0 ? (
+              <span className="text-sm text-slate-400">No partner access granted yet.</span>
+            ) : (
+              implementation.accessEmails.map(email => (
+                <span key={email} className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 text-xs font-medium pl-2.5 pr-1.5 py-1 rounded-full">
+                  {email}
+                  <button onClick={() => handleRemoveAccess(email)} className="text-slate-400 hover:text-red-500 leading-none">×</button>
+                </span>
+              ))
+            )}
+          </div>
+          <form onSubmit={handleAddAccess} className="flex gap-2 max-w-sm">
+            <input
+              type="email"
+              required
+              value={newAccessEmail}
+              onChange={e => setNewAccessEmail(e.target.value)}
+              placeholder="partner@company.com"
+              className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
+            />
+            <button
+              type="submit"
+              disabled={addingAccess}
+              className="bg-[#FFD500] hover:bg-[#e6bf00] disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+            >
+              {addingAccess ? 'Adding…' : 'Grant access'}
+            </button>
+          </form>
+        </div>
+
         {/* Row 1: Key Dates (editable) + Implementation Progress */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
@@ -268,40 +302,6 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
               })}
             </div>
           </div>
-        </div>
-
-        {/* Partner Access */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide mb-4">Partner Access</h2>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {(implementation.accessEmails || []).length === 0 ? (
-              <span className="text-sm text-slate-400">No partner access granted yet.</span>
-            ) : (
-              implementation.accessEmails.map(email => (
-                <span key={email} className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 text-xs font-medium pl-2.5 pr-1.5 py-1 rounded-full">
-                  {email}
-                  <button onClick={() => handleRemoveAccess(email)} className="text-slate-400 hover:text-red-500 leading-none">×</button>
-                </span>
-              ))
-            )}
-          </div>
-          <form onSubmit={handleAddAccess} className="flex gap-2 max-w-sm">
-            <input
-              type="email"
-              required
-              value={newAccessEmail}
-              onChange={e => setNewAccessEmail(e.target.value)}
-              placeholder="partner@company.com"
-              className="flex-1 border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
-            />
-            <button
-              type="submit"
-              disabled={addingAccess}
-              className="bg-[#FFD500] hover:bg-[#e6bf00] disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
-            >
-              {addingAccess ? 'Adding…' : 'Grant access'}
-            </button>
-          </form>
         </div>
 
         {/* Row 2: QA + RAID */}
