@@ -41,6 +41,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState(null)
+  const [partnerFilter, setPartnerFilter] = useState('All')
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -167,7 +168,31 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 text-sm">
             No implementations yet. Add a partner above to get started.
           </div>
-        ) : (
+        ) : (() => {
+          const partners = ['All', ...Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()]
+          const filtered = partnerFilter === 'All' ? implementations : implementations.filter(i => i.partner_name === partnerFilter)
+          return (
+          <>
+            {/* Partner filter chips */}
+            <div className="flex items-center gap-2 mb-4 flex-wrap">
+              {partners.map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPartnerFilter(p)}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                    partnerFilter === p
+                      ? 'bg-violet-600 text-white border-violet-600'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+              {partnerFilter !== 'All' && (
+                <span className="text-xs text-slate-400 ml-1">{filtered.length} implementation{filtered.length !== 1 ? 's' : ''}</span>
+              )}
+            </div>
+
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
@@ -182,7 +207,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {implementations.map(impl => {
+                {filtered.map(impl => {
                   const progress = getProgress(impl)
                   const qa = getQAProgress(impl)
                   const openRaid = (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
@@ -209,7 +234,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                               style={{ width: `${progress}%` }}
                             />
                           </div>
-                          <span className="text-slate-500 text-xs">{TP_KEYS.filter(k => (impl.touchPoints || {})[k] === 'complete').length} / {TP_KEYS.length}</span>
+                          <span className="text-slate-500 text-xs">{progress}%</span>
                         </div>
                       </td>
                       <td className="px-5 py-4">
@@ -237,7 +262,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               </tbody>
             </table>
           </div>
-        )}
+          </>
+        )})()}
       </div>
     </div>
   )
