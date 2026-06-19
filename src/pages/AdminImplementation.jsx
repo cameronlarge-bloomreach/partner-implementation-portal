@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getAllImplementations, updateDates } from '../api'
+import { getAllImplementations, updateDates, updateTouchPoint } from '../api'
 import Navbar from '../components/Navbar'
-import StatusBadge from '../components/StatusBadge'
 
 const DATE_FIELDS = [
   { key: 'contract_sign_date', label: 'Contract Signed' },
@@ -79,8 +78,9 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [implementation, setImplementation] = useState(null)
   const [dates, setDates] = useState({})
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [savingDates, setSavingDates] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [savingTP, setSavingTP] = useState(null)
 
   useEffect(() => {
     getAllImplementations(credential).then(data => {
@@ -97,11 +97,29 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
 
   async function saveDates(e) {
     e.preventDefault()
-    setSaving(true)
+    setSavingDates(true)
     await updateDates(credential, decodedEmail, dates)
-    setSaving(false)
+    setSavingDates(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
+  }
+
+  async function handleTPChange(key, status) {
+    setSavingTP(key)
+    try {
+      await updateTouchPoint(credential, decodedEmail, key, status)
+      setImplementation(prev => ({ ...prev, touchPoints: { ...prev.touchPoints, [key]: status } }))
+    } catch { /* silent */ }
+    setSavingTP(null)
+  }
+
+  async function handleQAChange(key, status) {
+    setSavingTP(key)
+    try {
+      await updateTouchPoint(credential, decodedEmail, key, status)
+      setImplementation(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [key]: status } }))
+    } catch { /* silent */ }
+    setSavingTP(null)
   }
 
   if (loading) return (
@@ -189,20 +207,17 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                   />
                 </div>
               ))}
-              <button type="submit" disabled={saving}
+              <button type="submit" disabled={savingDates}
                 className="w-full mt-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
-                {saving ? 'Saving…' : 'Save Dates'}
+                {savingDates ? 'Saving…' : 'Save Dates'}
               </button>
             </form>
           </div>
 
-          {/* Implementation Touch Points — read-only */}
+          {/* Implementation Touch Points — editable */}
           <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Implementation Progress</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Updated by the partner</p>
-              </div>
+              <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Implementation Progress</h2>
               <span className="text-xs font-medium text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">{tpPct}%</span>
             </div>
             <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
@@ -211,13 +226,22 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
             <div className="space-y-0.5">
               {TOUCH_POINTS.map(item => {
                 const status = tp[item.key] || 'not_started'
+                const isSaving = savingTP === item.key
                 return (
                   <div key={item.key} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
                     <div className="flex items-center gap-3">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${TP_DOT[status]}`} />
                       <span className="text-sm text-slate-700">{item.label}</span>
                     </div>
-                    <StatusBadge status={status} />
+                    <div className="flex items-center gap-1.5">
+                      {isSaving && <span className="text-xs text-slate-400">Saving…</span>}
+                      <select value={status} onChange={e => handleTPChange(item.key, e.target.value)} disabled={isSaving}
+                        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40 bg-white text-slate-700 cursor-pointer">
+                        <option value="not_started">Not Started</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="complete">Complete</option>
+                      </select>
+                    </div>
                   </div>
                 )
               })}
@@ -228,13 +252,10 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
         {/* Row 2: QA + RAID */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          {/* QA Steps — read-only */}
+          {/* QA Steps — editable */}
           <div className="bg-white rounded-2xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">QA Peer Reviews</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Updated by the partner</p>
-              </div>
+              <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">QA Peer Reviews</h2>
               <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${qaPct === 100 ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>{qaPct}%</span>
             </div>
             <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
@@ -243,6 +264,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
             <div className="space-y-0.5">
               {QA_STEPS.map((step, i) => {
                 const status = qa[step.key] || 'not_started'
+                const isSaving = savingTP === step.key
                 return (
                   <div key={step.key} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
                     <div className="flex items-center gap-3">
@@ -250,7 +272,15 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${TP_DOT[status]}`} />
                       <span className="text-sm text-slate-700">{step.label}</span>
                     </div>
-                    <StatusBadge status={status} />
+                    <div className="flex items-center gap-1.5">
+                      {isSaving && <span className="text-xs text-slate-400">Saving…</span>}
+                      <select value={status} onChange={e => handleQAChange(step.key, e.target.value)} disabled={isSaving}
+                        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40 bg-white text-slate-700 cursor-pointer">
+                        <option value="not_started">Not Started</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="complete">Complete</option>
+                      </select>
+                    </div>
                   </div>
                 )
               })}

@@ -50,3 +50,7 @@ export async function updateRaidItem(idToken, id, fields) {
 export async function deleteRaidItem(idToken, id) {
   return post({ action: 'deleteRaidItem', token: idToken, id })
 }
+
+export async function addImplementation(idToken, data) {
+  return post({ action: 'addImplementation', token: idToken, data })
+}
