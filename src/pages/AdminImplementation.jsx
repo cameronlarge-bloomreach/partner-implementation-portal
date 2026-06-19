@@ -58,7 +58,7 @@ function formatDate(val) {
   return isNaN(d) ? val : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function ProgressRing({ pct, size = 64, stroke = 5, color = '#7c3aed' }) {
+function ProgressRing({ pct, size = 64, stroke = 5, color = '#FFD500' }) {
   const r = (size - stroke) / 2
   const circ = 2 * Math.PI * r
   return (
@@ -153,23 +153,23 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
-              <Link to="/admin" className="text-xs text-violet-500 hover:text-violet-700 font-medium">← All partners</Link>
-              <p className="text-xs font-medium text-violet-500 uppercase tracking-widest mt-3 mb-1">{implementation.partner_name}</p>
+              <Link to="/admin" className="text-xs text-[#019ACE] hover:text-[#017aaa] font-medium">← All partners</Link>
+              <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mt-3 mb-1">{implementation.partner_name}</p>
               <h1 className="text-2xl font-bold text-slate-900">{implementation.client_name}</h1>
               <p className="text-sm text-slate-400 mt-1">{decodedEmail}</p>
             </div>
             <div className="flex items-center gap-8 sm:gap-10">
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
-                  <ProgressRing pct={tpPct} size={64} color="#7c3aed" />
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-violet-700">{tpPct}%</span>
+                  <ProgressRing pct={tpPct} size={64} color="#FFD500" />
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800">{tpPct}%</span>
                 </div>
                 <span className="text-xs text-slate-500">Progress</span>
               </div>
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
-                  <ProgressRing pct={qaPct} size={64} color="#0284c7" />
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-blue-700">{qaPct}%</span>
+                  <ProgressRing pct={qaPct} size={64} color="#019ACE" />
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[#019ACE]">{qaPct}%</span>
                 </div>
                 <span className="text-xs text-slate-500">QA</span>
               </div>
@@ -197,18 +197,18 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                 <div key={field.key}>
                   <label className="block text-xs text-slate-500 mb-1">
                     {field.label}
-                    {field.note && <span className="text-violet-400 ml-1">({field.note})</span>}
+                    {field.note && <span className="text-[#019ACE] ml-1">({field.note})</span>}
                   </label>
                   <input
                     type="date"
                     value={dates[field.key] || ''}
                     onChange={e => setDates(d => ({ ...d, [field.key]: e.target.value }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-slate-50"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500] bg-slate-50"
                   />
                 </div>
               ))}
               <button type="submit" disabled={savingDates}
-                className="w-full mt-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
+                className="w-full mt-2 bg-[#FFD500] hover:bg-[#e6bf00] disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-colors">
                 {savingDates ? 'Saving…' : 'Save Dates'}
               </button>
             </form>
@@ -218,10 +218,10 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Implementation Progress</h2>
-              <span className="text-xs font-medium text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">{tpPct}%</span>
+              <span className="text-xs font-medium text-black bg-[#FFD500] px-2 py-0.5 rounded-full">{tpPct}%</span>
             </div>
             <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
-              <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${tpPct}%` }} />
+              <div className="h-full bg-[#FFD500] rounded-full transition-all" style={{ width: `${tpPct}%` }} />
             </div>
             <div className="space-y-0.5">
               {TOUCH_POINTS.map(item => {
@@ -236,7 +236,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                     <div className="flex items-center gap-1.5">
                       {isSaving && <span className="text-xs text-slate-400">Saving…</span>}
                       <select value={status} onChange={e => handleTPChange(item.key, e.target.value)} disabled={isSaving}
-                        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40 bg-white text-slate-700 cursor-pointer">
+                        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#FFD500] disabled:opacity-40 bg-white text-slate-700 cursor-pointer">
                         <option value="not_started">Not Started</option>
                         <option value="in_progress">In Progress</option>
                         <option value="complete">Complete</option>
@@ -256,10 +256,10 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           <div className="bg-white rounded-2xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">QA Peer Reviews</h2>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${qaPct === 100 ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>{qaPct}%</span>
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${qaPct === 100 ? 'bg-emerald-50 text-emerald-600' : 'text-white bg-[#019ACE]'}`}>{qaPct}%</span>
             </div>
             <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${qaPct === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${qaPct}%` }} />
+              <div className={`h-full rounded-full transition-all ${qaPct === 100 ? 'bg-emerald-500' : 'bg-[#019ACE]'}`} style={{ width: `${qaPct}%` }} />
             </div>
             <div className="space-y-0.5">
               {QA_STEPS.map((step, i) => {
@@ -275,7 +275,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                     <div className="flex items-center gap-1.5">
                       {isSaving && <span className="text-xs text-slate-400">Saving…</span>}
                       <select value={status} onChange={e => handleQAChange(step.key, e.target.value)} disabled={isSaving}
-                        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40 bg-white text-slate-700 cursor-pointer">
+                        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#FFD500] disabled:opacity-40 bg-white text-slate-700 cursor-pointer">
                         <option value="not_started">Not Started</option>
                         <option value="in_progress">In Progress</option>
                         <option value="complete">Complete</option>

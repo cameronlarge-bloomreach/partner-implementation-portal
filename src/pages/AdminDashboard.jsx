@@ -92,7 +92,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           </div>
           <button
             onClick={() => { setShowAdd(v => !v); setAddError(null) }}
-            className="bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="bg-[#FFD500] hover:bg-[#e6bf00] text-black text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             + Add implementation
           </button>
@@ -111,7 +111,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder=""
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
                 />
               </div>
               <div>
@@ -122,7 +122,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   value={form.partner_name}
                   onChange={e => setForm(f => ({ ...f, partner_name: e.target.value }))}
                   placeholder=""
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
                 />
               </div>
               <div>
@@ -133,7 +133,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   value={form.client_name}
                   onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
                   placeholder=""
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
                 />
               </div>
               {addError && (
@@ -143,7 +143,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 <button
                   type="submit"
                   disabled={adding}
-                  className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors"
+                  className="bg-[#FFD500] hover:bg-[#e6bf00] disabled:opacity-50 text-black text-sm font-medium px-5 py-2 rounded-lg transition-colors"
                 >
                   {adding ? 'Adding…' : 'Add implementation'}
                 </button>
@@ -181,8 +181,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   onClick={() => setPartnerFilter(p)}
                   className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
                     partnerFilter === p
-                      ? 'bg-violet-600 text-white border-violet-600'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-violet-400 hover:text-violet-600'
+                      ? 'bg-[#FFD500] text-black border-[#FFD500]'
+                      : 'bg-white text-slate-600 border-slate-200 hover:border-[#FFD500] hover:text-black'
                   }`}
                 >
                   {p}
@@ -230,7 +230,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                         <div className="flex items-center gap-2">
                           <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                             <div
-                              className={`h-full rounded-full ${progress === 100 ? 'bg-emerald-500' : progress > 0 ? 'bg-violet-500' : 'bg-slate-200'}`}
+                              className={`h-full rounded-full ${progress === 100 ? 'bg-emerald-500' : progress > 0 ? 'bg-[#FFD500]' : 'bg-slate-200'}`}
                               style={{ width: `${progress}%` }}
                             />
                           </div>
@@ -241,7 +241,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                         <div className="flex items-center gap-2">
                           <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                             <div
-                              className={`h-full rounded-full ${qa === 100 ? 'bg-emerald-500' : qa > 0 ? 'bg-blue-500' : 'bg-slate-200'}`}
+                              className={`h-full rounded-full ${qa === 100 ? 'bg-emerald-500' : qa > 0 ? 'bg-[#019ACE]' : 'bg-slate-200'}`}
                               style={{ width: `${qa}%` }}
                             />
                           </div>
@@ -251,7 +251,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                       <td className="px-5 py-4 text-right">
                         <Link
                           to={`/admin/implementation/${encodeURIComponent(impl.email)}`}
-                          className="text-violet-600 hover:text-violet-800 font-medium"
+                          className="text-[#019ACE] hover:text-[#017aaa] font-medium"
                         >
                           View →
                         </Link>

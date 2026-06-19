@@ -62,7 +62,7 @@ function formatDate(val) {
 
 const EMPTY_RAID = { type: 'Risk', title: '', description: '', status: 'Open', owner: '' }
 
-function ProgressRing({ pct, size = 64, stroke = 5, color = '#7c3aed' }) {
+function ProgressRing({ pct, size = 64, stroke = 5, color = '#FFD500' }) {
   const r = (size - stroke) / 2
   const circ = 2 * Math.PI * r
   return (
@@ -83,7 +83,7 @@ function StatusSelect({ value, onChange, disabled, saving }) {
         value={value}
         onChange={e => onChange(e.target.value)}
         disabled={disabled}
-        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-40 bg-white text-slate-700 cursor-pointer"
+        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#FFD500] disabled:opacity-40 bg-white text-slate-700 cursor-pointer"
       >
         <option value="not_started">Not Started</option>
         <option value="in_progress">In Progress</option>
@@ -195,7 +195,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
-              <p className="text-xs font-medium text-violet-500 uppercase tracking-widest mb-1">{impl?.partner_name}</p>
+              <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mb-1">{impl?.partner_name}</p>
               <h1 className="text-2xl font-bold text-slate-900">{impl?.client_name}</h1>
               <p className="text-sm text-slate-400 mt-1">Implementation Overview</p>
             </div>
@@ -203,15 +203,15 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
             <div className="flex items-center gap-8 sm:gap-10">
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
-                  <ProgressRing pct={tpPct} size={64} color="#7c3aed" />
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-violet-700">{tpPct}%</span>
+                  <ProgressRing pct={tpPct} size={64} color="#FFD500" />
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800">{tpPct}%</span>
                 </div>
                 <span className="text-xs text-slate-500">Progress</span>
               </div>
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
-                  <ProgressRing pct={qaPct} size={64} color="#0284c7" />
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-blue-700">{qaPct}%</span>
+                  <ProgressRing pct={qaPct} size={64} color="#019ACE" />
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[#019ACE]">{qaPct}%</span>
                 </div>
                 <span className="text-xs text-slate-500">QA</span>
               </div>
@@ -236,7 +236,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
                 <div key={f.key} className="flex items-start justify-between gap-2">
                   <span className="text-xs text-slate-500 leading-tight">
                     {f.label}
-                    {f.note && <span className="text-violet-400 ml-1">({f.note})</span>}
+                    {f.note && <span className="text-[#019ACE] ml-1">({f.note})</span>}
                   </span>
                   <span className={`text-xs font-medium whitespace-nowrap ${impl?.[f.key] ? 'text-slate-800' : 'text-slate-300'}`}>
                     {formatDate(impl?.[f.key])}
@@ -250,11 +250,11 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
           <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Implementation Progress</h2>
-              <span className="text-xs font-medium text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">{tpPct}%</span>
+              <span className="text-xs font-medium text-black bg-[#FFD500] px-2 py-0.5 rounded-full">{tpPct}%</span>
             </div>
             {/* Mini progress bar */}
             <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
-              <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${tpPct}%` }} />
+              <div className="h-full bg-[#FFD500] rounded-full transition-all" style={{ width: `${tpPct}%` }} />
             </div>
             <div className="space-y-0.5">
               {TOUCH_POINTS.map(tp_ => {
@@ -285,10 +285,10 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
           <div className="bg-white rounded-2xl border border-slate-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">QA Peer Reviews</h2>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${qaPct === 100 ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>{qaPct}%</span>
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${qaPct === 100 ? 'bg-emerald-50 text-emerald-600' : 'text-white bg-[#019ACE]'}`}>{qaPct}%</span>
             </div>
             <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${qaPct === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${qaPct}%` }} />
+              <div className={`h-full rounded-full transition-all ${qaPct === 100 ? 'bg-emerald-500' : 'bg-[#019ACE]'}`} style={{ width: `${qaPct}%` }} />
             </div>
             <div className="space-y-0.5">
               {QA_STEPS.map((step, i) => {
@@ -321,7 +321,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
               </div>
               <button
                 onClick={() => setShowAddRaid(v => !v)}
-                className="text-xs bg-violet-600 hover:bg-violet-700 text-white font-medium px-3 py-1.5 rounded-lg transition-colors"
+                className="text-xs bg-[#FFD500] hover:bg-[#e6bf00] text-black font-medium px-3 py-1.5 rounded-lg transition-colors"
               >
                 + Add
               </button>
@@ -333,30 +333,30 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Type</label>
                     <select value={newRaid.type} onChange={e => setNewRaid(r => ({ ...r, type: e.target.value }))}
-                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-violet-400">
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
                       {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Status</label>
                     <select value={newRaid.status} onChange={e => setNewRaid(r => ({ ...r, status: e.target.value }))}
-                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-violet-400">
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
                       {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                 </div>
                 <input type="text" required value={newRaid.title} onChange={e => setNewRaid(r => ({ ...r, title: e.target.value }))}
                   placeholder="Title *"
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
                 <textarea value={newRaid.description} onChange={e => setNewRaid(r => ({ ...r, description: e.target.value }))}
                   rows={2} placeholder="Description"
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none" />
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500] resize-none" />
                 <input type="text" value={newRaid.owner} onChange={e => setNewRaid(r => ({ ...r, owner: e.target.value }))}
                   placeholder="Owner"
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
                 <div className="flex gap-2">
                   <button type="submit" disabled={addingRaid}
-                    className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg">
+                    className="bg-[#FFD500] hover:bg-[#e6bf00] disabled:opacity-50 text-black text-xs font-medium px-3 py-1.5 rounded-lg">
                     {addingRaid ? 'Adding…' : 'Add'}
                   </button>
                   <button type="button" onClick={() => { setShowAddRaid(false); setNewRaid(EMPTY_RAID) }}
@@ -379,23 +379,23 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <select value={editRaidData.type} onChange={e => setEditRaidData(d => ({ ...d, type: e.target.value }))}
-                          className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-violet-400">
+                          className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
                           {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
                         </select>
                         <select value={editRaidData.status} onChange={e => setEditRaidData(d => ({ ...d, status: e.target.value }))}
-                          className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-violet-400">
+                          className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
                           {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
                         </select>
                       </div>
                       <input type="text" value={editRaidData.title} onChange={e => setEditRaidData(d => ({ ...d, title: e.target.value }))}
-                        className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                        className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
                       <textarea value={editRaidData.description} onChange={e => setEditRaidData(d => ({ ...d, description: e.target.value }))}
-                        rows={2} className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none" />
+                        rows={2} className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500] resize-none" />
                       <input type="text" value={editRaidData.owner} onChange={e => setEditRaidData(d => ({ ...d, owner: e.target.value }))}
-                        placeholder="Owner" className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                        placeholder="Owner" className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
                       <div className="flex gap-2">
                         <button onClick={() => handleUpdateRaid(item.id)}
-                          className="bg-violet-600 text-white text-xs font-medium px-3 py-1 rounded-lg">Save</button>
+                          className="bg-[#FFD500] text-black text-xs font-medium px-3 py-1 rounded-lg">Save</button>
                         <button onClick={() => setEditingRaid(null)}
                           className="text-xs text-slate-500 px-2 py-1">Cancel</button>
                       </div>
@@ -413,7 +413,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
                           <button onClick={() => { setEditingRaid(item.id); setEditRaidData({ type: item.type, title: item.title, description: item.description, status: item.status, owner: item.owner }) }}
-                            className="text-xs text-violet-500 hover:text-violet-700">Edit</button>
+                            className="text-xs text-[#019ACE] hover:text-[#017aaa]">Edit</button>
                           <button onClick={() => handleDeleteRaid(item.id)}
                             className="text-xs text-red-400 hover:text-red-600">Delete</button>
                         </div>

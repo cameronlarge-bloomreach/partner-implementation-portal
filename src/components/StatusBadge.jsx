@@ -1,6 +1,6 @@
 const styles = {
   'not_started': 'bg-slate-100 text-slate-600',
-  'in_progress': 'bg-blue-100 text-blue-700',
+  'in_progress': 'bg-[#E6F7FC] text-[#019ACE]',
   'complete': 'bg-green-100 text-green-700',
 }
 
