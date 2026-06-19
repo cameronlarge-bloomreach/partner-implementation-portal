@@ -63,7 +63,7 @@ export default function Login({ onLogin }) {
   return (
     <div className="min-h-screen flex">
       {/* Left panel — brand, with a faint tick texture echoing the rollout rail */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12 tick-texture" style={{ backgroundColor: 'var(--gold)' }}>
+      <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12" style={{ backgroundColor: 'var(--gold)' }}>
         <img src={bloomreachLogo} alt="Bloomreach" className="h-12" />
         <p className="font-display text-black/70 text-sm mt-6 tracking-wide">Partner Implementation Portal</p>
       </div>
