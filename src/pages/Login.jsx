@@ -41,23 +41,20 @@ export default function Login({ onLogin }) {
     <div className="min-h-screen flex">
       {/* Left panel — brand */}
       <div className="hidden lg:flex lg:w-1/2 flex-col items-center justify-center p-12" style={{ background: '#FFD500' }}>
-        <img src={bloomreachLogo} alt="Bloomreach" className="h-12 mb-6" />
-        <p className="text-black/60 text-sm text-center max-w-xs leading-relaxed">
-          Partner implementation portal — track your Bloomreach integration progress in one place
-        </p>
+        <img src={bloomreachLogo} alt="Bloomreach" className="h-12" />
       </div>
 
       {/* Right panel — sign in */}
       <div className="flex-1 flex items-center justify-center p-8 bg-slate-50">
-        <div className="w-full max-w-sm">
+        <div className="w-full max-w-sm text-center">
           {/* Mobile logo */}
           <img src={bloomreachLogo} alt="Bloomreach" className="h-10 mx-auto mb-8 lg:hidden" />
 
           <h1 className="text-2xl font-bold text-slate-900 mb-1">Sign in</h1>
-          <p className="text-slate-500 text-sm mb-8">Use your Google account to access your implementation</p>
+          <p className="text-slate-500 text-sm mb-8">Use the login options below to update your Bloomreach Implementation Progress</p>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6">
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-6 text-left">
               {error}
             </div>
           )}
@@ -76,10 +73,6 @@ export default function Login({ onLogin }) {
               />
             </div>
           )}
-
-          <p className="text-center text-xs text-slate-400 mt-8">
-            Access is granted by your Bloomreach implementation manager
-          </p>
         </div>
       </div>
     </div>
