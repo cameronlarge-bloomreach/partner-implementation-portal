@@ -38,3 +38,15 @@ export async function getAllImplementations(idToken) {
 export async function updateDates(idToken, email, dates) {
   return post({ action: 'updateDates', token: idToken, email, dates })
 }
+
+export async function addRaidItem(idToken, email, item) {
+  return post({ action: 'addRaidItem', token: idToken, email, item })
+}
+
+export async function updateRaidItem(idToken, id, fields) {
+  return post({ action: 'updateRaidItem', token: idToken, id, fields })
+}
+
+export async function deleteRaidItem(idToken, id) {
+  return post({ action: 'deleteRaidItem', token: idToken, id })
+}

@@ -24,6 +24,43 @@ const TOUCH_POINTS = [
   { key: 'use_cases', label: 'Use Cases' },
 ]
 
+const QA_STEPS = [
+  { key: 'qa_peer_review_1', label: 'QA Peer Review 1: ID Validation' },
+  { key: 'qa_peer_review_2', label: 'QA Peer Review 2: Back End Tracking' },
+  { key: 'qa_peer_review_3', label: 'QA Peer Review 3: Front End Tracking' },
+  { key: 'qa_peer_review_4', label: 'QA Peer Review 4: Use Cases Data Check and Debugging' },
+  { key: 'qa_peer_review_5', label: 'QA Peer Review 5: Data Mapping' },
+  { key: 'qa_peer_review_6', label: 'QA Peer Review 6: Expiration & Data Cleanliness' },
+]
+
+const RAID_TYPE_STYLES = {
+  Risk: 'bg-red-50 text-red-700 border-red-200',
+  Action: 'bg-blue-50 text-blue-700 border-blue-200',
+  Issue: 'bg-amber-50 text-amber-700 border-amber-200',
+  Dependency: 'bg-purple-50 text-purple-700 border-purple-200',
+}
+
+const RAID_STATUS_STYLES = {
+  Open: 'bg-red-100 text-red-700',
+  'In Progress': 'bg-blue-100 text-blue-700',
+  Resolved: 'bg-green-100 text-green-700',
+  Closed: 'bg-slate-100 text-slate-500',
+}
+
+function formatDate(val) {
+  if (!val) return '—'
+  const d = new Date(val)
+  return isNaN(d) ? val : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function StatusDot({ status }) {
+  return (
+    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+      status === 'complete' ? 'bg-green-500' : status === 'in_progress' ? 'bg-blue-500' : 'bg-slate-300'
+    }`} />
+  )
+}
+
 export default function AdminImplementation({ credential, userInfo, onLogout }) {
   const { email } = useParams()
   const decodedEmail = decodeURIComponent(email)
@@ -70,10 +107,16 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   )
 
   const touchPoints = implementation.touchPoints || {}
-  const overallProgress = (() => {
-    const complete = TOUCH_POINTS.filter(tp => touchPoints[tp.key] === 'complete').length
-    return Math.round((complete / TOUCH_POINTS.length) * 100)
-  })()
+  const qaSteps = implementation.qaSteps || {}
+  const raidItems = implementation.raid || []
+
+  const overallProgress = Math.round(
+    (TOUCH_POINTS.filter(tp => touchPoints[tp.key] === 'complete').length / TOUCH_POINTS.length) * 100
+  )
+
+  const qaProgress = Math.round(
+    (QA_STEPS.filter(s => qaSteps[s.key] === 'complete').length / QA_STEPS.length) * 100
+  )
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -98,7 +141,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           </div>
         </div>
 
-        {/* Date fields — admin edits these */}
+        {/* Key Dates — admin edits */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold text-slate-900">Key Dates</h2>
@@ -121,17 +164,14 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                 </div>
               ))}
             </div>
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-            >
+            <button type="submit" disabled={saving}
+              className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
               {saving ? 'Saving...' : 'Save Dates'}
             </button>
           </form>
         </div>
 
-        {/* Touch points — read-only for admin */}
+        {/* Touch points — read-only */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <h2 className="text-base font-semibold text-slate-900 mb-1">Implementation Progress</h2>
           <p className="text-sm text-slate-500 mb-4">Updated by the partner</p>
@@ -139,10 +179,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
             {TOUCH_POINTS.map(tp => (
               <div key={tp.key} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
                 <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    touchPoints[tp.key] === 'complete' ? 'bg-green-500' :
-                    touchPoints[tp.key] === 'in_progress' ? 'bg-blue-500' : 'bg-slate-300'
-                  }`} />
+                  <StatusDot status={touchPoints[tp.key]} />
                   <span className="text-sm font-medium text-slate-800">{tp.label}</span>
                 </div>
                 <StatusBadge status={touchPoints[tp.key] || 'not_started'} />
@@ -150,6 +187,64 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
             ))}
           </div>
         </div>
+
+        {/* QA Steps — read-only */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">QA Peer Reviews</h2>
+              <p className="text-sm text-slate-500">Updated by the partner · {qaProgress}% complete</p>
+            </div>
+            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${qaProgress === 100 ? 'bg-green-500' : 'bg-violet-400'}`}
+                style={{ width: `${qaProgress}%` }}
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            {QA_STEPS.map(step => (
+              <div key={step.key} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
+                <div className="flex items-center gap-3">
+                  <StatusDot status={qaSteps[step.key]} />
+                  <span className="text-sm font-medium text-slate-800">{step.label}</span>
+                </div>
+                <StatusBadge status={qaSteps[step.key] || 'not_started'} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* RAID Log — read-only */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 className="text-base font-semibold text-slate-900 mb-1">RAID Log</h2>
+          <p className="text-sm text-slate-500 mb-4">Logged by the partner · {raidItems.length} item{raidItems.length !== 1 ? 's' : ''}</p>
+          {raidItems.length === 0 ? (
+            <p className="text-sm text-slate-400 text-center py-6">No RAID items logged yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {raidItems.map(item => (
+                <div key={item.id} className="border border-slate-100 rounded-xl p-4">
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${RAID_TYPE_STYLES[item.type] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+                      {item.type}
+                    </span>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded ${RAID_STATUS_STYLES[item.status] || 'bg-slate-100 text-slate-600'}`}>
+                      {item.status}
+                    </span>
+                    <span className="text-sm font-medium text-slate-900">{item.title}</span>
+                  </div>
+                  {item.description && <p className="text-sm text-slate-600 mt-1">{item.description}</p>}
+                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
+                    {item.owner && <span>Owner: {item.owner}</span>}
+                    {item.raised_date && <span>Raised: {formatDate(item.raised_date)}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
       </div>
     </div>
   )
