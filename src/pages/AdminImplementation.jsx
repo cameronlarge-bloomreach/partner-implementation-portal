@@ -5,13 +5,13 @@ import Navbar from '../components/Navbar'
 import StatusBadge from '../components/StatusBadge'
 
 const DATE_FIELDS = [
-  { key: 'contract_sign_date', label: 'Contract Sign Date' },
-  { key: 'planned_completion_date', label: 'Planned Completion Date', note: 'Set at start' },
-  { key: 'target_completion_date', label: 'Target Completion Date', note: 'Updated monthly' },
-  { key: 'actual_completion_date', label: 'Actual Completion Date' },
-  { key: 'planned_go_live_date', label: 'Planned Go Live Date', note: 'Set at start' },
-  { key: 'target_time_to_live', label: 'Target Time to Live', note: 'Updated monthly' },
-  { key: 'actual_time_to_live', label: 'Actual Time to Live' },
+  { key: 'contract_sign_date', label: 'Contract Signed' },
+  { key: 'planned_completion_date', label: 'Planned Completion', note: 'Set at start' },
+  { key: 'target_completion_date', label: 'Target Completion', note: 'Updated monthly' },
+  { key: 'actual_completion_date', label: 'Actual Completion' },
+  { key: 'planned_go_live_date', label: 'Planned Go Live', note: 'Set at start' },
+  { key: 'target_time_to_live', label: 'Target Go Live', note: 'Updated monthly' },
+  { key: 'actual_time_to_live', label: 'Actual Go Live' },
 ]
 
 const TOUCH_POINTS = [
@@ -25,26 +25,32 @@ const TOUCH_POINTS = [
 ]
 
 const QA_STEPS = [
-  { key: 'qa_peer_review_1', label: 'QA Peer Review 1: ID Validation' },
-  { key: 'qa_peer_review_2', label: 'QA Peer Review 2: Back End Tracking' },
-  { key: 'qa_peer_review_3', label: 'QA Peer Review 3: Front End Tracking' },
-  { key: 'qa_peer_review_4', label: 'QA Peer Review 4: Use Cases Data Check and Debugging' },
-  { key: 'qa_peer_review_5', label: 'QA Peer Review 5: Data Mapping' },
-  { key: 'qa_peer_review_6', label: 'QA Peer Review 6: Expiration & Data Cleanliness' },
+  { key: 'qa_peer_review_1', label: 'ID Validation' },
+  { key: 'qa_peer_review_2', label: 'Back End Tracking' },
+  { key: 'qa_peer_review_3', label: 'Front End Tracking' },
+  { key: 'qa_peer_review_4', label: 'Use Cases Data Check & Debugging' },
+  { key: 'qa_peer_review_5', label: 'Data Mapping' },
+  { key: 'qa_peer_review_6', label: 'Expiration & Data Cleanliness' },
 ]
 
 const RAID_TYPE_STYLES = {
-  Risk: 'bg-red-50 text-red-700 border-red-200',
-  Action: 'bg-blue-50 text-blue-700 border-blue-200',
-  Issue: 'bg-amber-50 text-amber-700 border-amber-200',
-  Dependency: 'bg-purple-50 text-purple-700 border-purple-200',
+  Risk:       'bg-red-50 text-red-700 ring-1 ring-red-200',
+  Action:     'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
+  Issue:      'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
+  Dependency: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200',
 }
 
 const RAID_STATUS_STYLES = {
-  Open: 'bg-red-100 text-red-700',
+  Open:          'bg-red-100 text-red-700',
   'In Progress': 'bg-blue-100 text-blue-700',
-  Resolved: 'bg-green-100 text-green-700',
-  Closed: 'bg-slate-100 text-slate-500',
+  Resolved:      'bg-green-100 text-green-700',
+  Closed:        'bg-slate-100 text-slate-500',
+}
+
+const TP_DOT = {
+  complete:    'bg-emerald-500',
+  in_progress: 'bg-blue-500',
+  not_started: 'bg-slate-200',
 }
 
 function formatDate(val) {
@@ -53,11 +59,16 @@ function formatDate(val) {
   return isNaN(d) ? val : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function StatusDot({ status }) {
+function ProgressRing({ pct, size = 64, stroke = 5, color = '#7c3aed' }) {
+  const r = (size - stroke) / 2
+  const circ = 2 * Math.PI * r
   return (
-    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-      status === 'complete' ? 'bg-green-500' : status === 'in_progress' ? 'bg-blue-500' : 'bg-slate-300'
-    }`} />
+    <svg width={size} height={size} className="-rotate-90">
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        strokeDasharray={circ} strokeDashoffset={circ * (1 - pct / 100)}
+        strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
+    </svg>
   )
 }
 
@@ -95,7 +106,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-slate-500">Loading...</div>
+      <div className="text-slate-400 text-sm">Loading…</div>
     </div>
   )
 
@@ -106,143 +117,183 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
     </div>
   )
 
-  const touchPoints = implementation.touchPoints || {}
-  const qaSteps = implementation.qaSteps || {}
+  const tp = implementation.touchPoints || {}
+  const qa = implementation.qaSteps || {}
   const raidItems = implementation.raid || []
 
-  const overallProgress = Math.round(
-    (TOUCH_POINTS.filter(tp => touchPoints[tp.key] === 'complete').length / TOUCH_POINTS.length) * 100
-  )
-
-  const qaProgress = Math.round(
-    (QA_STEPS.filter(s => qaSteps[s.key] === 'complete').length / QA_STEPS.length) * 100
-  )
+  const tpPct = Math.round(TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length / TOUCH_POINTS.length * 100)
+  const qaPct = Math.round(QA_STEPS.filter(x => qa[x.key] === 'complete').length / QA_STEPS.length * 100)
+  const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar userInfo={userInfo} onLogout={onLogout} title="Admin — Partner Portal" />
 
-      <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-        <div>
-          <Link to="/admin" className="text-sm text-violet-600 hover:text-violet-800">← All partners</Link>
-          <div className="flex items-start justify-between mt-3">
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+
+        {/* Hero header */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">{implementation.client_name}</h1>
-              <p className="text-sm text-slate-500 mt-0.5">{implementation.partner_name}</p>
-              <p className="text-xs text-slate-400">{decodedEmail}</p>
+              <Link to="/admin" className="text-xs text-violet-500 hover:text-violet-700 font-medium">← All partners</Link>
+              <p className="text-xs font-medium text-violet-500 uppercase tracking-widest mt-3 mb-1">{implementation.partner_name}</p>
+              <h1 className="text-2xl font-bold text-slate-900">{implementation.client_name}</h1>
+              <p className="text-sm text-slate-400 mt-1">{decodedEmail}</p>
             </div>
-            <div className="text-right">
-              <div className="text-2xl font-bold text-violet-600">{overallProgress}%</div>
-              <div className="text-xs text-slate-500">Complete</div>
+            <div className="flex items-center gap-8 sm:gap-10">
+              <div className="flex flex-col items-center gap-1">
+                <div className="relative">
+                  <ProgressRing pct={tpPct} size={64} color="#7c3aed" />
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-violet-700">{tpPct}%</span>
+                </div>
+                <span className="text-xs text-slate-500">Progress</span>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <div className="relative">
+                  <ProgressRing pct={qaPct} size={64} color="#0284c7" />
+                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-blue-700">{qaPct}%</span>
+                </div>
+                <span className="text-xs text-slate-500">QA</span>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold ${
+                  openRaid > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
+                }`}>{openRaid}</div>
+                <span className="text-xs text-slate-500">Open RAID</span>
+              </div>
             </div>
-          </div>
-          <div className="mt-3 h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${overallProgress}%` }} />
           </div>
         </div>
 
-        {/* Key Dates — admin edits */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-slate-900">Key Dates</h2>
-            {saved && <span className="text-sm text-green-600 font-medium">Saved!</span>}
-          </div>
-          <form onSubmit={saveDates} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Row 1: Key Dates (editable) + Implementation Progress */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+          {/* Key Dates — admin edits */}
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Key Dates</h2>
+              {saved && <span className="text-xs text-emerald-600 font-medium">Saved!</span>}
+            </div>
+            <form onSubmit={saveDates} className="space-y-3">
               {DATE_FIELDS.map(field => (
                 <div key={field.key}>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                  <label className="block text-xs text-slate-500 mb-1">
                     {field.label}
-                    {field.note && <span className="text-xs text-violet-500 ml-1">({field.note})</span>}
+                    {field.note && <span className="text-violet-400 ml-1">({field.note})</span>}
                   </label>
                   <input
                     type="date"
                     value={dates[field.key] || ''}
                     onChange={e => setDates(d => ({ ...d, [field.key]: e.target.value }))}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-slate-50"
                   />
                 </div>
               ))}
-            </div>
-            <button type="submit" disabled={saving}
-              className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-              {saving ? 'Saving...' : 'Save Dates'}
-            </button>
-          </form>
-        </div>
+              <button type="submit" disabled={saving}
+                className="w-full mt-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors">
+                {saving ? 'Saving…' : 'Save Dates'}
+              </button>
+            </form>
+          </div>
 
-        {/* Touch points — read-only */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="text-base font-semibold text-slate-900 mb-1">Implementation Progress</h2>
-          <p className="text-sm text-slate-500 mb-4">Updated by the partner</p>
-          <div className="space-y-1">
-            {TOUCH_POINTS.map(tp => (
-              <div key={tp.key} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
-                <div className="flex items-center gap-3">
-                  <StatusDot status={touchPoints[tp.key]} />
-                  <span className="text-sm font-medium text-slate-800">{tp.label}</span>
-                </div>
-                <StatusBadge status={touchPoints[tp.key] || 'not_started'} />
+          {/* Implementation Touch Points — read-only */}
+          <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Implementation Progress</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Updated by the partner</p>
               </div>
-            ))}
+              <span className="text-xs font-medium text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">{tpPct}%</span>
+            </div>
+            <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
+              <div className="h-full bg-violet-500 rounded-full transition-all" style={{ width: `${tpPct}%` }} />
+            </div>
+            <div className="space-y-0.5">
+              {TOUCH_POINTS.map(item => {
+                const status = tp[item.key] || 'not_started'
+                return (
+                  <div key={item.key} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${TP_DOT[status]}`} />
+                      <span className="text-sm text-slate-700">{item.label}</span>
+                    </div>
+                    <StatusBadge status={status} />
+                  </div>
+                )
+              })}
+            </div>
           </div>
         </div>
 
-        {/* QA Steps — read-only */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h2 className="text-base font-semibold text-slate-900">QA Peer Reviews</h2>
-              <p className="text-sm text-slate-500">Updated by the partner · {qaProgress}% complete</p>
-            </div>
-            <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full ${qaProgress === 100 ? 'bg-green-500' : 'bg-violet-400'}`}
-                style={{ width: `${qaProgress}%` }}
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            {QA_STEPS.map(step => (
-              <div key={step.key} className="flex items-center justify-between py-3 border-b border-slate-100 last:border-0">
-                <div className="flex items-center gap-3">
-                  <StatusDot status={qaSteps[step.key]} />
-                  <span className="text-sm font-medium text-slate-800">{step.label}</span>
-                </div>
-                <StatusBadge status={qaSteps[step.key] || 'not_started'} />
+        {/* Row 2: QA + RAID */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* QA Steps — read-only */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">QA Peer Reviews</h2>
+                <p className="text-xs text-slate-400 mt-0.5">Updated by the partner</p>
               </div>
-            ))}
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${qaPct === 100 ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>{qaPct}%</span>
+            </div>
+            <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${qaPct === 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${qaPct}%` }} />
+            </div>
+            <div className="space-y-0.5">
+              {QA_STEPS.map((step, i) => {
+                const status = qa[step.key] || 'not_started'
+                return (
+                  <div key={step.key} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-mono text-slate-400 w-4">{i + 1}</span>
+                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${TP_DOT[status]}`} />
+                      <span className="text-sm text-slate-700">{step.label}</span>
+                    </div>
+                    <StatusBadge status={status} />
+                  </div>
+                )
+              })}
+            </div>
           </div>
-        </div>
 
-        {/* RAID Log — read-only */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
-          <h2 className="text-base font-semibold text-slate-900 mb-1">RAID Log</h2>
-          <p className="text-sm text-slate-500 mb-4">Logged by the partner · {raidItems.length} item{raidItems.length !== 1 ? 's' : ''}</p>
-          {raidItems.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-6">No RAID items logged yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {raidItems.map(item => (
-                <div key={item.id} className="border border-slate-100 rounded-xl p-4">
-                  <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${RAID_TYPE_STYLES[item.type] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
+          {/* RAID Log — read-only */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col">
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">RAID Log</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Logged by the partner · {raidItems.length} item{raidItems.length !== 1 ? 's' : ''}
+                {openRaid > 0 && <span className="text-amber-500 ml-1">· {openRaid} open</span>}
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto space-y-2 max-h-96">
+              {raidItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-slate-300">
+                  <svg className="w-10 h-10 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  <p className="text-sm">No RAID items logged yet</p>
+                </div>
+              ) : raidItems.map(item => (
+                <div key={item.id} className="border border-slate-100 rounded-xl p-3">
+                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${RAID_TYPE_STYLES[item.type] || 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}>
                       {item.type}
                     </span>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded ${RAID_STATUS_STYLES[item.status] || 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${RAID_STATUS_STYLES[item.status] || 'bg-slate-100 text-slate-600'}`}>
                       {item.status}
                     </span>
-                    <span className="text-sm font-medium text-slate-900">{item.title}</span>
                   </div>
-                  {item.description && <p className="text-sm text-slate-600 mt-1">{item.description}</p>}
-                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-400">
+                  <p className="text-sm font-medium text-slate-800">{item.title}</p>
+                  {item.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{item.description}</p>}
+                  <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
                     {item.owner && <span>Owner: {item.owner}</span>}
-                    {item.raised_date && <span>Raised: {formatDate(item.raised_date)}</span>}
+                    {item.raised_date && <span>{formatDate(item.raised_date)}</span>}
                   </div>
                 </div>
               ))}
             </div>
-          )}
+          </div>
         </div>
 
       </div>
