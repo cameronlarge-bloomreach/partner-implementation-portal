@@ -42,6 +42,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState(null)
   const [partnerFilter, setPartnerFilter] = useState('All')
+  const [showCompleted, setShowCompleted] = useState(false)
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -93,7 +94,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           <div>
             <h1 className="text-xl font-semibold text-slate-900">All Implementations</h1>
             <p className="text-slate-500 text-sm mt-0.5">
-              {implementations.length} partner{implementations.length !== 1 ? 's' : ''}
+              {implementations.filter(i => i.status !== 'complete').length} active implementation{implementations.filter(i => i.status !== 'complete').length !== 1 ? 's' : ''}
             </p>
           </div>
           <button
@@ -214,8 +215,10 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             No implementations yet. Add a partner above to get started.
           </div>
         ) : (() => {
-          const partners = ['All', ...Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()]
-          const filtered = partnerFilter === 'All' ? implementations : implementations.filter(i => i.partner_name === partnerFilter)
+          const activeImpls = implementations.filter(i => i.status !== 'complete')
+          const completedImpls = implementations.filter(i => i.status === 'complete')
+          const partners = ['All', ...Array.from(new Set(activeImpls.map(i => i.partner_name).filter(Boolean))).sort()]
+          const filtered = partnerFilter === 'All' ? activeImpls : activeImpls.filter(i => i.partner_name === partnerFilter)
           return (
           <>
             {/* Partner filter chips */}
@@ -238,83 +241,113 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               )}
             </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600">Partner / Client</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600">Contract Signed</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600">Target Completion</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600">Target Go Live</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600">Progress</th>
-                  <th className="text-left px-5 py-3 font-medium text-slate-600">QA</th>
-                  <th className="px-5 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map(impl => {
-                  const progress = getProgress(impl)
-                  const qa = getQAProgress(impl)
-                  const openRaid = (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
-                  return (
-                    <tr key={impl.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="font-medium text-slate-900">{impl.client_name}</div>
-                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${impl.status === 'complete' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                            {impl.status === 'complete' ? 'Complete' : 'Active'}
-                          </span>
-                        </div>
-                        <div className="text-xs text-slate-500">{impl.partner_name}</div>
-                        <div className="text-xs text-slate-400">{(impl.accessEmails || []).join(', ')}</div>
-                        {openRaid > 0 && (
-                          <span className="inline-block mt-1 text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">
-                            {openRaid} open RAID
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-slate-600">{formatDate(impl.contract_sign_date)}</td>
-                      <td className="px-5 py-4 text-slate-600">{formatDate(impl.target_completion_date)}</td>
-                      <td className="px-5 py-4 text-slate-600">{formatDate(impl.target_time_to_live)}</td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${progress === 100 ? 'bg-emerald-500' : progress > 0 ? 'bg-[#FFD500]' : 'bg-slate-200'}`}
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                          <span className="text-slate-500 text-xs">{progress}%</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${qa === 100 ? 'bg-emerald-500' : qa > 0 ? 'bg-[#019ACE]' : 'bg-slate-200'}`}
-                              style={{ width: `${qa}%` }}
-                            />
-                          </div>
-                          <span className="text-slate-500 text-xs">{QA_KEYS.filter(k => (impl.qaSteps || {})[k] === 'complete').length} / {QA_KEYS.length}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <Link
-                          to={`/admin/implementation/${impl.id}`}
-                          className="text-[#019ACE] hover:text-[#017aaa] font-medium"
-                        >
-                          View →
-                        </Link>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+            {filtered.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-400 text-sm mb-6">
+                No active implementations{partnerFilter !== 'All' ? ` for ${partnerFilter}` : ''}.
+              </div>
+            ) : (
+              <ImplTable items={filtered} />
+            )}
+
+            {/* Completed — collapsed by default */}
+            {completedImpls.length > 0 && (
+              <div className="mt-6">
+                <button
+                  onClick={() => setShowCompleted(v => !v)}
+                  className="flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-700"
+                >
+                  <span className={`inline-block transition-transform ${showCompleted ? 'rotate-90' : ''}`}>›</span>
+                  Completed ({completedImpls.length})
+                </button>
+                {showCompleted && (
+                  <div className="mt-3">
+                    <ImplTable items={completedImpls} />
+                  </div>
+                )}
+              </div>
+            )}
           </>
         )})()}
       </div>
+    </div>
+  )
+}
+
+function ImplTable({ items }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 border-b border-slate-200">
+          <tr>
+            <th className="text-left px-5 py-3 font-medium text-slate-600">Partner / Client</th>
+            <th className="text-left px-5 py-3 font-medium text-slate-600">Contract Signed</th>
+            <th className="text-left px-5 py-3 font-medium text-slate-600">Target Completion</th>
+            <th className="text-left px-5 py-3 font-medium text-slate-600">Target Go Live</th>
+            <th className="text-left px-5 py-3 font-medium text-slate-600">Progress</th>
+            <th className="text-left px-5 py-3 font-medium text-slate-600">QA</th>
+            <th className="px-5 py-3"></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {items.map(impl => {
+            const progress = getProgress(impl)
+            const qa = getQAProgress(impl)
+            const openRaid = (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
+            return (
+              <tr key={impl.id} className="hover:bg-slate-50 transition-colors">
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className="font-medium text-slate-900">{impl.client_name}</div>
+                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${impl.status === 'complete' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                      {impl.status === 'complete' ? 'Complete' : 'Active'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500">{impl.partner_name}</div>
+                  <div className="text-xs text-slate-400">{(impl.accessEmails || []).join(', ')}</div>
+                  {openRaid > 0 && (
+                    <span className="inline-block mt-1 text-xs bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">
+                      {openRaid} open RAID
+                    </span>
+                  )}
+                </td>
+                <td className="px-5 py-4 text-slate-600">{formatDate(impl.contract_sign_date)}</td>
+                <td className="px-5 py-4 text-slate-600">{formatDate(impl.target_completion_date)}</td>
+                <td className="px-5 py-4 text-slate-600">{formatDate(impl.target_time_to_live)}</td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${progress === 100 ? 'bg-emerald-500' : progress > 0 ? 'bg-[#FFD500]' : 'bg-slate-200'}`}
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <span className="text-slate-500 text-xs">{progress}%</span>
+                  </div>
+                </td>
+                <td className="px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${qa === 100 ? 'bg-emerald-500' : qa > 0 ? 'bg-[#019ACE]' : 'bg-slate-200'}`}
+                        style={{ width: `${qa}%` }}
+                      />
+                    </div>
+                    <span className="text-slate-500 text-xs">{QA_KEYS.filter(k => (impl.qaSteps || {})[k] === 'complete').length} / {QA_KEYS.length}</span>
+                  </div>
+                </td>
+                <td className="px-5 py-4 text-right">
+                  <Link
+                    to={`/admin/implementation/${impl.id}`}
+                    className="text-[#019ACE] hover:text-[#017aaa] font-medium"
+                  >
+                    View →
+                  </Link>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
