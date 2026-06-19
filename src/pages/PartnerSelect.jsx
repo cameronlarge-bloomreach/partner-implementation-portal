@@ -5,25 +5,28 @@ export default function PartnerSelect({ userInfo, onLogout }) {
   const implementations = userInfo?.implementations || []
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
       <Navbar userInfo={userInfo} onLogout={onLogout} title="Partner Portal" />
 
       <div className="max-w-3xl mx-auto px-6 py-12">
-        <h1 className="text-xl font-semibold text-slate-900 mb-1">Your implementations</h1>
-        <p className="text-sm text-slate-500 mb-6">Select an implementation to view its progress.</p>
+        <h1 className="font-display text-xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>Your implementations</h1>
+        <p className="text-sm mb-6" style={{ color: 'var(--muted)' }}>Select an implementation to view its progress.</p>
 
         <div className="grid gap-3">
           {implementations.map(impl => (
             <Link
               key={impl.id}
               to={`/implementation/${impl.id}`}
-              className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center justify-between hover:border-[#FFD500] transition-colors"
+              className="bg-white rounded-2xl p-5 flex items-center justify-between transition-colors"
+              style={{ border: '1px solid var(--hairline)' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--gold)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--hairline)'}
             >
               <div>
-                <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mb-1">{impl.partner_name}</p>
-                <p className="text-base font-semibold text-slate-900">{impl.client_name}</p>
+                <p className="text-xs font-medium uppercase tracking-widest mb-1" style={{ color: 'var(--arctic)' }}>{impl.partner_name}</p>
+                <p className="font-display text-base font-medium" style={{ color: 'var(--ink)' }}>{impl.client_name}</p>
               </div>
-              <span className="text-slate-400">→</span>
+              <span style={{ color: 'var(--muted)' }}>→</span>
             </Link>
           ))}
         </div>

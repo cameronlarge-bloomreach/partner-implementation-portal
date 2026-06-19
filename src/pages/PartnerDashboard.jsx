@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem } from '../api'
 import Navbar from '../components/Navbar'
+import RolloutRail from '../components/RolloutRail'
 
 const TOUCH_POINTS = [
   { key: 'account_creation', label: 'Account Creation' },
@@ -63,12 +64,12 @@ function formatDate(val) {
 
 const EMPTY_RAID = { type: 'Risk', title: '', description: '', status: 'Open', owner: '' }
 
-function ProgressRing({ pct, size = 64, stroke = 5, color = '#FFD500' }) {
+function ProgressRing({ pct, size = 64, stroke = 5, color = 'var(--gold)' }) {
   const r = (size - stroke) / 2
   const circ = 2 * Math.PI * r
   return (
     <svg width={size} height={size} className="-rotate-90">
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#e2e8f0" strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--hairline)" strokeWidth={stroke} />
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
         strokeDasharray={circ} strokeDashoffset={circ * (1 - pct / 100)}
         strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
@@ -173,15 +174,15 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   }
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-slate-400 text-sm">Loading your implementation…</div>
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--paper)' }}>
+      <div className="text-sm" style={{ color: 'var(--muted)' }}>Loading your implementation…</div>
     </div>
   )
 
   if (error) return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
       <Navbar userInfo={userInfo} onLogout={onLogout} title="Partner Portal" />
-      <div className="max-w-2xl mx-auto mt-20 text-center text-red-500 text-sm">{error}</div>
+      <div className="max-w-2xl mx-auto mt-20 text-center text-sm" style={{ color: 'var(--rust)' }}>{error}</div>
     </div>
   )
 
@@ -193,43 +194,44 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
       <Navbar userInfo={userInfo} onLogout={onLogout} title="Partner Portal" />
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
         {/* ── Hero header ── */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+        <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
               {userInfo?.implementations?.length > 1 && (
-                <Link to="/select" className="text-xs text-[#019ACE] hover:text-[#017aaa] font-medium">← My implementations</Link>
+                <Link to="/select" className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>← My implementations</Link>
               )}
-              <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mb-1 mt-1">{impl?.partner_name}</p>
-              <h1 className="text-2xl font-bold text-slate-900">{impl?.client_name}</h1>
-              <p className="text-sm text-slate-400 mt-1">Implementation Overview</p>
+              <p className="text-xs font-medium uppercase tracking-widest mb-1 mt-1" style={{ color: 'var(--arctic)' }}>{impl?.partner_name}</p>
+              <h1 className="font-display text-2xl font-semibold" style={{ color: 'var(--ink)' }}>{impl?.client_name}</h1>
+              <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Implementation Overview</p>
             </div>
             {/* Summary rings */}
             <div className="flex items-center gap-8 sm:gap-10">
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
-                  <ProgressRing pct={tpPct} size={64} color="#FFD500" />
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-slate-800">{tpPct}%</span>
+                  <ProgressRing pct={tpPct} size={64} color="var(--gold)" />
+                  <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-semibold" style={{ color: 'var(--ink)' }}>{tpPct}%</span>
                 </div>
-                <span className="text-xs text-slate-500">Progress</span>
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>Progress</span>
               </div>
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
-                  <ProgressRing pct={qaPct} size={64} color="#019ACE" />
-                  <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[#019ACE]">{qaPct}%</span>
+                  <ProgressRing pct={qaPct} size={64} color="var(--arctic)" />
+                  <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-semibold" style={{ color: 'var(--arctic)' }}>{qaPct}%</span>
                 </div>
-                <span className="text-xs text-slate-500">QA</span>
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>QA</span>
               </div>
               <div className="flex flex-col items-center gap-1">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold ${
-                  openRaid > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
-                }`}>{openRaid}</div>
-                <span className="text-xs text-slate-500">Open RAID</span>
+                <div className="w-16 h-16 rounded-full flex items-center justify-center font-mono text-xl font-semibold"
+                  style={{ background: openRaid > 0 ? 'var(--rust-bg)' : 'var(--moss-bg)', color: openRaid > 0 ? 'var(--rust)' : 'var(--moss)' }}>
+                  {openRaid}
+                </div>
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>Open RAID</span>
               </div>
             </div>
           </div>
@@ -239,16 +241,16 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
           {/* Key Dates — 2 cols */}
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6">
-            <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide mb-4">Key Dates</h2>
+          <div className="lg:col-span-2 bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
+            <h2 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: 'var(--ink)' }}>Key Dates</h2>
             <div className="space-y-3">
               {DATE_FIELDS.map(f => (
                 <div key={f.key} className="flex items-start justify-between gap-2">
-                  <span className="text-xs text-slate-500 leading-tight">
+                  <span className="text-xs leading-tight" style={{ color: 'var(--muted)' }}>
                     {f.label}
-                    {f.note && <span className="text-[#019ACE] ml-1">({f.note})</span>}
+                    {f.note && <span className="ml-1" style={{ color: 'var(--arctic)' }}>({f.note})</span>}
                   </span>
-                  <span className={`text-xs font-medium whitespace-nowrap ${impl?.[f.key] ? 'text-slate-800' : 'text-slate-300'}`}>
+                  <span className="font-mono text-xs font-medium whitespace-nowrap" style={{ color: impl?.[f.key] ? 'var(--ink)' : 'var(--hairline)' }}>
                     {formatDate(impl?.[f.key])}
                   </span>
                 </div>
@@ -257,23 +259,22 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
           </div>
 
           {/* Implementation Touch Points — 3 cols */}
-          <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="lg:col-span-3 bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">Implementation Progress</h2>
-              <span className="text-xs font-medium text-black bg-[#FFD500] px-2 py-0.5 rounded-full">{tpPct}%</span>
+              <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Implementation Progress</h2>
+              <span className="font-mono text-xs font-semibold text-black px-2 py-0.5 rounded-full" style={{ background: 'var(--gold)' }}>{tpPct}%</span>
             </div>
-            {/* Mini progress bar */}
-            <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
-              <div className="h-full bg-[#FFD500] rounded-full transition-all" style={{ width: `${tpPct}%` }} />
+            <div className="mb-5">
+              <RolloutRail total={TOUCH_POINTS.length} completed={TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length} color="var(--gold)" />
             </div>
             <div className="space-y-0.5">
               {TOUCH_POINTS.map(tp_ => {
                 const status = tp[tp_.key] || 'not_started'
                 return (
-                  <div key={tp_.key} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0 group">
+                  <div key={tp_.key} className="flex items-center justify-between py-2.5 border-b last:border-0 group" style={{ borderColor: 'var(--paper)' }}>
                     <div className="flex items-center gap-3">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${TP_STATUS_COLORS[status]}`} />
-                      <span className="text-sm text-slate-700">{tp_.label}</span>
+                      <span className="text-sm" style={{ color: 'var(--ink)' }}>{tp_.label}</span>
                     </div>
                     <StatusSelect
                       value={status}
@@ -292,23 +293,23 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* QA Peer Reviews */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">QA Peer Reviews</h2>
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${qaPct === 100 ? 'bg-emerald-50 text-emerald-600' : 'text-white bg-[#019ACE]'}`}>{qaPct}%</span>
+              <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>QA Peer Reviews</h2>
+              <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: qaPct === 100 ? 'var(--moss-bg)' : 'var(--arctic)', color: qaPct === 100 ? 'var(--moss)' : '#fff' }}>{qaPct}%</span>
             </div>
-            <div className="h-1 bg-slate-100 rounded-full mb-5 overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${qaPct === 100 ? 'bg-emerald-500' : 'bg-[#019ACE]'}`} style={{ width: `${qaPct}%` }} />
+            <div className="mb-5">
+              <RolloutRail total={QA_STEPS.length} completed={QA_STEPS.filter(x => qa[x.key] === 'complete').length} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} />
             </div>
             <div className="space-y-0.5">
               {QA_STEPS.map((step, i) => {
                 const status = qa[step.key] || 'not_started'
                 return (
-                  <div key={step.key} className="flex items-center justify-between py-2.5 border-b border-slate-50 last:border-0">
+                  <div key={step.key} className="flex items-center justify-between py-2.5 border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs font-mono text-slate-400 w-4">{i + 1}</span>
+                      <span className="font-mono text-xs w-4" style={{ color: 'var(--muted)' }}>{i + 1}</span>
                       <div className={`w-2 h-2 rounded-full flex-shrink-0 ${TP_STATUS_COLORS[status]}`} />
-                      <span className="text-sm text-slate-700">{step.label}</span>
+                      <span className="text-sm" style={{ color: 'var(--ink)' }}>{step.label}</span>
                     </div>
                     <StatusSelect
                       value={status}
@@ -323,15 +324,16 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
           </div>
 
           {/* RAID Log */}
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col">
+          <div className="bg-white rounded-2xl p-6 flex flex-col" style={{ border: '1px solid var(--hairline)' }}>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">RAID Log</h2>
-                <p className="text-xs text-slate-400 mt-0.5">Risks · Actions · Issues · Dependencies</p>
+                <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>RAID Log</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Risks · Actions · Issues · Dependencies</p>
               </div>
               <button
                 onClick={() => setShowAddRaid(v => !v)}
-                className="text-xs bg-[#FFD500] hover:bg-[#e6bf00] text-black font-medium px-3 py-1.5 rounded-lg transition-colors"
+                className="text-xs hover:opacity-90 text-black font-medium px-3 py-1.5 rounded-lg transition-opacity"
+                style={{ background: 'var(--gold)' }}
               >
                 + Add
               </button>

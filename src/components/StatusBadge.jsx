@@ -1,7 +1,7 @@
 const styles = {
   'not_started': 'bg-slate-100 text-slate-600',
   'in_progress': 'bg-[#E6F7FC] text-[#019ACE]',
-  'complete': 'bg-green-100 text-green-700',
+  'complete': 'bg-[var(--moss-bg)] text-[var(--moss)]',
 }
 
 const labels = {
