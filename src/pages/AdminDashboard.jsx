@@ -209,7 +209,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                               style={{ width: `${progress}%` }}
                             />
                           </div>
-                          <span className="text-slate-500 text-xs w-8">{progress}%</span>
+                          <span className="text-slate-500 text-xs">{TP_KEYS.filter(k => (impl.touchPoints || {})[k] === 'complete').length} / {TP_KEYS.length}</span>
                         </div>
                       </td>
                       <td className="px-5 py-4">
@@ -220,7 +220,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                               style={{ width: `${qa}%` }}
                             />
                           </div>
-                          <span className="text-slate-500 text-xs w-8">{qa}%</span>
+                          <span className="text-slate-500 text-xs">{QA_KEYS.filter(k => (impl.qaSteps || {})[k] === 'complete').length} / {QA_KEYS.length}</span>
                         </div>
                       </td>
                       <td className="px-5 py-4 text-right">
