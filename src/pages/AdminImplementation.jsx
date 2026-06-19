@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { getAllImplementations, updateDates, updateTouchPoint, addAccess, removeAccess } from '../api'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import { getAllImplementations, updateDates, updateTouchPoint, addAccess, removeAccess, updateImplementationStatus, deleteImplementation } from '../api'
 import Navbar from '../components/Navbar'
 
 const DATE_FIELDS = [
@@ -73,6 +73,7 @@ function ProgressRing({ pct, size = 64, stroke = 5, color = '#FFD500' }) {
 
 export default function AdminImplementation({ credential, userInfo, onLogout }) {
   const { id } = useParams()
+  const navigate = useNavigate()
 
   const [implementation, setImplementation] = useState(null)
   const [dates, setDates] = useState({})
@@ -82,6 +83,8 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [savingTP, setSavingTP] = useState(null)
   const [newAccessEmail, setNewAccessEmail] = useState('')
   const [addingAccess, setAddingAccess] = useState(false)
+  const [savingStatus, setSavingStatus] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     getAllImplementations(credential).then(data => {
@@ -143,6 +146,27 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
     } catch { /* silent */ }
   }
 
+  async function handleToggleStatus() {
+    const newStatus = implementation.status === 'complete' ? 'active' : 'complete'
+    setSavingStatus(true)
+    try {
+      await updateImplementationStatus(credential, id, newStatus)
+      setImplementation(prev => ({ ...prev, status: newStatus }))
+    } catch { /* silent */ }
+    setSavingStatus(false)
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete "${implementation.client_name}"? This permanently removes its progress, QA, RAID items, and partner access. This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      await deleteImplementation(credential, id)
+      navigate('/admin', { replace: true })
+    } catch {
+      setDeleting(false)
+    }
+  }
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="text-slate-400 text-sm">Loading…</div>
@@ -175,11 +199,33 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
               <Link to="/admin" className="text-xs text-[#019ACE] hover:text-[#017aaa] font-medium">← All partners</Link>
-              <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest mt-3 mb-1">{implementation.partner_name}</p>
+              <div className="flex items-center gap-2 mt-3 mb-1">
+                <p className="text-xs font-medium text-[#019ACE] uppercase tracking-widest">{implementation.partner_name}</p>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${implementation.status === 'complete' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                  {implementation.status === 'complete' ? 'Complete' : 'Active'}
+                </span>
+              </div>
               <h1 className="text-2xl font-bold text-slate-900">{implementation.client_name}</h1>
               <p className="text-sm text-slate-400 mt-1">{(implementation.accessEmails || []).join(', ') || 'No partner access granted yet'}</p>
             </div>
-            <div className="flex items-center gap-8 sm:gap-10">
+            <div className="flex flex-col items-end gap-3">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleToggleStatus}
+                  disabled={savingStatus}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:border-slate-300 disabled:opacity-50 transition-colors"
+                >
+                  {savingStatus ? 'Saving…' : implementation.status === 'complete' ? 'Reopen' : 'Mark Complete'}
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="text-xs font-medium px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50 transition-colors"
+                >
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
+              </div>
+              <div className="flex items-center gap-8 sm:gap-10">
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
                   <ProgressRing pct={tpPct} size={64} color="#FFD500" />
@@ -199,6 +245,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                   openRaid > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'
                 }`}>{openRaid}</div>
                 <span className="text-xs text-slate-500">Open RAID</span>
+              </div>
               </div>
             </div>
           </div>

@@ -60,6 +60,14 @@ export async function addImplementation(token, data) {
   return post({ action: 'addImplementation', token, data })
 }
 
+export async function updateImplementationStatus(token, implementationId, status) {
+  return post({ action: 'updateImplementationStatus', token, implementationId, status })
+}
+
+export async function deleteImplementation(token, implementationId) {
+  return post({ action: 'deleteImplementation', token, implementationId })
+}
+
 export async function addAccess(token, implementationId, email) {
   return post({ action: 'addAccess', token, implementationId, email })
 }

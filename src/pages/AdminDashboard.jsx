@@ -67,6 +67,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           id: res.id,
           partner_name: form.partner_name,
           client_name: form.client_name,
+          status: 'active',
           accessEmails: emails,
           touchPoints: {},
           qaSteps: {},
@@ -102,6 +103,45 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             + Add implementation
           </button>
         </div>
+
+        {/* Summary stats */}
+        {!loading && !error && implementations.length > 0 && (() => {
+          const activeImpls = implementations.filter(i => i.status !== 'complete')
+          const completeCount = implementations.length - activeImpls.length
+          const avgProgress = activeImpls.length
+            ? Math.round(activeImpls.reduce((sum, i) => sum + getProgress(i), 0) / activeImpls.length)
+            : 0
+          const avgQA = activeImpls.length
+            ? Math.round(activeImpls.reduce((sum, i) => sum + getQAProgress(i), 0) / activeImpls.length)
+            : 0
+          const totalOpenRaid = implementations.reduce(
+            (sum, i) => sum + (i.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length, 0
+          )
+          const overdueCount = activeImpls.filter(i => {
+            if (!i.target_completion_date) return false
+            return new Date(i.target_completion_date) < new Date()
+          }).length
+
+          const stats = [
+            { label: 'Active', value: activeImpls.length },
+            { label: 'Complete', value: completeCount },
+            { label: 'Avg Progress', value: `${avgProgress}%` },
+            { label: 'Avg QA', value: `${avgQA}%` },
+            { label: 'Open RAID', value: totalOpenRaid, warn: totalOpenRaid > 0 },
+            { label: 'Overdue', value: overdueCount, warn: overdueCount > 0 },
+          ]
+
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+              {stats.map(s => (
+                <div key={s.label} className="bg-white rounded-2xl border border-slate-200 p-4">
+                  <p className={`text-2xl font-bold ${s.warn ? 'text-amber-600' : 'text-slate-900'}`}>{s.value}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          )
+        })()}
 
         {/* Add partner form */}
         {showAdd && (
@@ -219,7 +259,12 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   return (
                     <tr key={impl.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-5 py-4">
-                        <div className="font-medium text-slate-900">{impl.client_name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-slate-900">{impl.client_name}</div>
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${impl.status === 'complete' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                            {impl.status === 'complete' ? 'Complete' : 'Active'}
+                          </span>
+                        </div>
                         <div className="text-xs text-slate-500">{impl.partner_name}</div>
                         <div className="text-xs text-slate-400">{(impl.accessEmails || []).join(', ')}</div>
                         {openRaid > 0 && (
