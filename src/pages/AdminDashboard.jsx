@@ -93,7 +93,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             onClick={() => { setShowAdd(v => !v); setAddError(null) }}
             className="bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            + Add partner
+            + Add implementation
           </button>
         </div>
 
@@ -109,7 +109,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   required
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  placeholder="partner@company.com"
+                  placeholder=""
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>
@@ -120,7 +120,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   required
                   value={form.partner_name}
                   onChange={e => setForm(f => ({ ...f, partner_name: e.target.value }))}
-                  placeholder="e.g. Voxwise"
+                  placeholder=""
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>
@@ -131,7 +131,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   required
                   value={form.client_name}
                   onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
-                  placeholder="e.g. Dormeo"
+                  placeholder=""
                   className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>
@@ -144,7 +144,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   disabled={adding}
                   className="bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors"
                 >
-                  {adding ? 'Adding…' : 'Add partner'}
+                  {adding ? 'Adding…' : 'Add implementation'}
                 </button>
                 <button
                   type="button"
