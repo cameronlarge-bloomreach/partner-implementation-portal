@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
+import VerifyMagicLink from './pages/VerifyMagicLink'
 import PartnerDashboard from './pages/PartnerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminImplementation from './pages/AdminImplementation'
@@ -35,6 +36,7 @@ export default function App() {
               : <Login onLogin={handleLogin} />
           }
         />
+        <Route path="/verify" element={<VerifyMagicLink onLogin={handleLogin} />} />
         <Route
           path="/"
           element={

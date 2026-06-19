@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { GoogleLogin } from '@react-oauth/google'
-import { getMyImplementation } from '../api'
+import { getMyImplementation, requestMagicLink } from '../api'
 import bloomreachLogo from '../assets/bloomreach-logo.png'
 
 function parseJwt(token) {
@@ -11,6 +11,9 @@ function parseJwt(token) {
 export default function Login({ onLogin }) {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [email, setEmail] = useState('')
+  const [magicSent, setMagicSent] = useState(false)
+  const [magicLoading, setMagicLoading] = useState(false)
 
   async function handleSuccess(response) {
     setLoading(true)
@@ -35,6 +38,23 @@ export default function Login({ onLogin }) {
       setError('Something went wrong. Please try again.')
       setLoading(false)
     }
+  }
+
+  async function handleMagicLink(e) {
+    e.preventDefault()
+    setMagicLoading(true)
+    setError(null)
+    try {
+      const res = await requestMagicLink(email)
+      if (res.error) {
+        setError('That email is not registered as a partner. Please contact your Bloomreach representative.')
+      } else {
+        setMagicSent(true)
+      }
+    } catch {
+      setError('Something went wrong. Please try again.')
+    }
+    setMagicLoading(false)
   }
 
   return (
@@ -62,7 +82,7 @@ export default function Login({ onLogin }) {
           {loading ? (
             <div className="text-center text-slate-500 text-sm py-2">Signing you in…</div>
           ) : (
-            <div className="flex justify-center">
+            <div className="flex justify-center mb-6">
               <GoogleLogin
                 onSuccess={handleSuccess}
                 onError={() => setError('Google sign-in failed. Please try again.')}
@@ -72,6 +92,36 @@ export default function Login({ onLogin }) {
                 shape="rectangular"
               />
             </div>
+          )}
+
+          <div className="flex items-center gap-3 my-6">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-xs text-slate-400">OR</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+
+          {magicSent ? (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-lg px-4 py-3 text-left">
+              Check your email — we sent a sign-in link to <strong>{email}</strong>. It expires in 15 minutes.
+            </div>
+          ) : (
+            <form onSubmit={handleMagicLink} className="space-y-3 text-left">
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD500]"
+              />
+              <button
+                type="submit"
+                disabled={magicLoading}
+                className="w-full bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
+              >
+                {magicLoading ? 'Sending…' : 'Email me a sign-in link'}
+              </button>
+            </form>
           )}
         </div>
       </div>

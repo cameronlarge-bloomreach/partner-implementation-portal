@@ -54,3 +54,11 @@ export async function deleteRaidItem(idToken, id) {
 export async function addImplementation(idToken, data) {
   return post({ action: 'addImplementation', token: idToken, data })
 }
+
+export async function requestMagicLink(email) {
+  return post({ action: 'requestMagicLink', email })
+}
+
+export async function verifyMagicLink(email, magicToken) {
+  return post({ action: 'verifyMagicLink', email, magicToken })
+}
