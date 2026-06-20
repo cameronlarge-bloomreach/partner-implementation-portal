@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getAllImplementations, updateDates, updateTouchPoint, addAccess, removeAccess, updateImplementationStatus, deleteImplementation } from '../api'
+import { getAllImplementations, updateDates, updateTouchPoint, addAccess, removeAccess, updateImplementationStatus, deleteImplementation, updateSlackChannel } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 
@@ -86,6 +86,9 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [addingAccess, setAddingAccess] = useState(false)
   const [savingStatus, setSavingStatus] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [slackChannelId, setSlackChannelId] = useState('')
+  const [savingSlack, setSavingSlack] = useState(false)
+  const [slackSaved, setSlackSaved] = useState(false)
 
   useEffect(() => {
     getAllImplementations(credential).then(data => {
@@ -95,6 +98,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
         const d = {}
         DATE_FIELDS.forEach(f => { d[f.key] = impl[f.key] || '' })
         setDates(d)
+        setSlackChannelId(impl.slackChannelId || '')
       }
       setLoading(false)
     })
@@ -155,6 +159,18 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
       setImplementation(prev => ({ ...prev, status: newStatus }))
     } catch { /* silent */ }
     setSavingStatus(false)
+  }
+
+  async function handleSaveSlackChannel(e) {
+    e.preventDefault()
+    setSavingSlack(true)
+    try {
+      await updateSlackChannel(credential, id, slackChannelId.trim())
+      setImplementation(prev => ({ ...prev, slackChannelId: slackChannelId.trim() }))
+      setSlackSaved(true)
+      setTimeout(() => setSlackSaved(false), 2000)
+    } catch { /* silent */ }
+    setSavingSlack(false)
   }
 
   async function handleDelete() {
@@ -289,6 +305,35 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
               style={{ background: 'var(--gold)' }}
             >
               {addingAccess ? 'Adding…' : 'Grant access'}
+            </button>
+          </form>
+        </div>
+
+        {/* Slack Notifications */}
+        <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Slack Notifications</h2>
+            {slackSaved && <span className="text-xs font-medium" style={{ color: 'var(--moss)' }}>Saved!</span>}
+          </div>
+          <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+            Partner touch point/QA updates post to this channel. Invite the bot to the channel first (<span className="font-mono">/invite @YourAppName</span>), then paste its channel ID below.
+          </p>
+          <form onSubmit={handleSaveSlackChannel} className="flex gap-2 max-w-sm">
+            <input
+              type="text"
+              value={slackChannelId}
+              onChange={e => setSlackChannelId(e.target.value)}
+              placeholder="C0123ABCD"
+              className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+              style={{ border: '1px solid var(--hairline)' }}
+            />
+            <button
+              type="submit"
+              disabled={savingSlack}
+              className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90"
+              style={{ background: 'var(--gold)' }}
+            >
+              {savingSlack ? 'Saving…' : 'Save'}
             </button>
           </form>
         </div>

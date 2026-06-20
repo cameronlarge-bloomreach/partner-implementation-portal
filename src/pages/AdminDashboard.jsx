@@ -32,7 +32,7 @@ function getQAProgress(impl) {
   return Math.round((complete / QA_KEYS.length) * 100)
 }
 
-const EMPTY_FORM = { emails: '', partner_name: '', client_name: '' }
+const EMPTY_FORM = { emails: '', partner_name: '', client_name: '', slackChannelId: '' }
 
 export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [implementations, setImplementations] = useState([])
@@ -71,6 +71,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           client_name: form.client_name,
           status: 'active',
           accessEmails: emails,
+          slackChannelId: form.slackChannelId.trim(),
           touchPoints: {},
           qaSteps: {},
           raid: [],
@@ -151,7 +152,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
         {showAdd && (
           <div className="bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--hairline)' }}>
             <h2 className="font-display text-base font-semibold mb-4" style={{ color: 'var(--ink)' }}>Add new partner implementation</h2>
-            <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>Partner email(s) *</label>
                 <input
@@ -188,10 +189,21 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   style={{ border: '1px solid var(--hairline)' }}
                 />
               </div>
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>Slack channel ID</label>
+                <input
+                  type="text"
+                  value={form.slackChannelId}
+                  onChange={e => setForm(f => ({ ...f, slackChannelId: e.target.value }))}
+                  placeholder="C0123ABCD (optional)"
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ border: '1px solid var(--hairline)' }}
+                />
+              </div>
               {addError && (
-                <div className="sm:col-span-3 text-sm" style={{ color: 'var(--rust)' }}>{addError}</div>
+                <div className="sm:col-span-4 text-sm" style={{ color: 'var(--rust)' }}>{addError}</div>
               )}
-              <div className="sm:col-span-3 flex gap-3">
+              <div className="sm:col-span-4 flex gap-3">
                 <button
                   type="submit"
                   disabled={adding}

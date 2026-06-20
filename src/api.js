@@ -68,6 +68,10 @@ export async function deleteImplementation(token, implementationId) {
   return post({ action: 'deleteImplementation', token, implementationId })
 }
 
+export async function updateSlackChannel(token, implementationId, slackChannelId) {
+  return post({ action: 'updateSlackChannel', token, implementationId, slackChannelId })
+}
+
 export async function addAccess(token, implementationId, email) {
   return post({ action: 'addAccess', token, implementationId, email })
 }
