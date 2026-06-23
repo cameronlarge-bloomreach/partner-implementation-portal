@@ -87,25 +87,42 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
-      <Navbar userInfo={userInfo} onLogout={onLogout} title="Admin — Partner Portal" />
+      <div className="no-print">
+        <Navbar userInfo={userInfo} onLogout={onLogout} title="Admin — Partner Portal" />
+      </div>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
 
+        {/* Print-only header, shown when exported to PDF */}
+        <div className="print-only mb-6">
+          <h1 className="font-display text-xl font-semibold" style={{ color: 'var(--ink)' }}>Bloomreach Partner Portal — All Implementations</h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>Exported {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+        </div>
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="no-print flex items-center justify-between mb-6">
           <div>
             <h1 className="font-display text-xl font-semibold" style={{ color: 'var(--ink)' }}>All Implementations</h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
               {implementations.filter(i => i.status !== 'complete').length} active implementation{implementations.filter(i => i.status !== 'complete').length !== 1 ? 's' : ''}
             </p>
           </div>
-          <button
-            onClick={() => { setShowAdd(v => !v); setAddError(null) }}
-            className="text-black text-sm font-medium px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
-            style={{ background: 'var(--gold)' }}
-          >
-            + Add implementation
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={() => window.print()}
+              className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+            >
+              Export to PDF
+            </button>
+            <button
+              onClick={() => { setShowAdd(v => !v); setAddError(null) }}
+              className="text-black text-sm font-medium px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
+              style={{ background: 'var(--gold)' }}
+            >
+              + Add implementation
+            </button>
+          </div>
         </div>
 
         {/* Summary stats */}
@@ -150,7 +167,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 
         {/* Add partner form */}
         {showAdd && (
-          <div className="bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--hairline)' }}>
+          <div className="no-print bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--hairline)' }}>
             <h2 className="font-display text-base font-semibold mb-4" style={{ color: 'var(--ink)' }}>Add new partner implementation</h2>
             <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div>
@@ -242,7 +259,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           return (
           <>
             {/* Partner filter chips */}
-            <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <div className="no-print flex items-center gap-2 mb-4 flex-wrap">
               {partners.map(p => (
                 <button
                   key={p}
@@ -273,7 +290,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               <div className="mt-6">
                 <button
                   onClick={() => setShowCompleted(v => !v)}
-                  className="flex items-center gap-2 text-sm font-medium hover:opacity-70"
+                  className="no-print flex items-center gap-2 text-sm font-medium hover:opacity-70"
                   style={{ color: 'var(--muted)' }}
                 >
                   <span className={`inline-block transition-transform ${showCompleted ? 'rotate-90' : ''}`}>›</span>
@@ -305,7 +322,7 @@ function ImplTable({ items }) {
             <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Target Go Live</th>
             <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Progress</th>
             <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>QA</th>
-            <th className="px-5 py-3"></th>
+            <th className="no-print px-5 py-3"></th>
           </tr>
         </thead>
         <tbody className="divide-y" style={{ borderColor: 'var(--paper)' }}>
@@ -347,7 +364,7 @@ function ImplTable({ items }) {
                     <span className="font-mono text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>{qaDone}/{QA_KEYS.length}</span>
                   </div>
                 </td>
-                <td className="px-5 py-4 text-right">
+                <td className="no-print px-5 py-4 text-right">
                   <Link
                     to={`/admin/implementation/${impl.id}`}
                     className="font-medium hover:opacity-70"

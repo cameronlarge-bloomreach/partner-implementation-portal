@@ -66,3 +66,24 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* Print / "Export to PDF" support */
+.print-only {
+  display: none;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block;
+  }
+  body {
+    background: #fff;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
