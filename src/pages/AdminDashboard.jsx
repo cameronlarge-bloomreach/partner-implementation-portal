@@ -139,8 +139,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             (sum, i) => sum + (i.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length, 0
           )
           const overdueCount = activeImpls.filter(i => {
-            if (!i.target_completion_date) return false
-            return new Date(i.target_completion_date) < new Date()
+            if (!i.planned_completion_date) return false
+            return new Date(i.planned_completion_date) < new Date()
           }).length
 
           const stats = [
@@ -317,9 +317,6 @@ function ImplTable({ items }) {
         <thead style={{ background: 'var(--paper)', borderBottom: '1px solid var(--hairline)' }}>
           <tr>
             <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Partner / Client</th>
-            <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Contract Signed</th>
-            <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Target Completion</th>
-            <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Target Go Live</th>
             <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Progress</th>
             <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>QA</th>
             <th className="no-print px-5 py-3"></th>
@@ -349,9 +346,6 @@ function ImplTable({ items }) {
                     </span>
                   )}
                 </td>
-                <td className="px-5 py-4 font-mono text-xs" style={{ color: 'var(--muted)' }}>{formatDate(impl.contract_sign_date)}</td>
-                <td className="px-5 py-4 font-mono text-xs" style={{ color: 'var(--muted)' }}>{formatDate(impl.target_completion_date)}</td>
-                <td className="px-5 py-4 font-mono text-xs" style={{ color: 'var(--muted)' }}>{formatDate(impl.target_time_to_live)}</td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-2 w-28">
                     <RolloutRail total={TP_KEYS.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
