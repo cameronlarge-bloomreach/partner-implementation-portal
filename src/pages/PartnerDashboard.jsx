@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem } from '../api'
+import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem, addAccess } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 
@@ -24,12 +24,9 @@ const QA_STEPS = [
 ]
 
 const DATE_FIELDS = [
-  { key: 'contract_sign_date', label: 'Contract Signed' },
   { key: 'planned_completion_date', label: 'Planned Completion', note: 'Set at start' },
-  { key: 'target_completion_date', label: 'Target Completion', note: 'Updated monthly' },
   { key: 'actual_completion_date', label: 'Actual Completion' },
   { key: 'planned_go_live_date', label: 'Planned Go Live', note: 'Set at start' },
-  { key: 'target_time_to_live', label: 'Target Go Live', note: 'Updated monthly' },
   { key: 'actual_time_to_live', label: 'Actual Go Live' },
 ]
 
@@ -44,16 +41,17 @@ const TYPE_CHIP = {
 }
 
 const STATUS_CHIP = {
-  Open:        'bg-red-100 text-red-700',
-  'In Progress':'bg-blue-100 text-blue-700',
-  Resolved:    'bg-green-100 text-green-700',
-  Closed:      'bg-slate-100 text-slate-500',
+  Open:         'bg-red-100 text-red-700',
+  'In Progress': 'bg-blue-100 text-blue-700',
+  Resolved:     'bg-green-100 text-green-700',
+  Closed:       'bg-slate-100 text-slate-500',
 }
 
 const TP_STATUS_COLORS = {
-  complete:    'bg-emerald-500',
-  in_progress: 'bg-blue-500',
-  not_started: 'bg-slate-200',
+  complete:     'bg-emerald-500',
+  in_progress:  'bg-blue-500',
+  not_started:  'bg-slate-200',
+  not_required: 'bg-violet-200',
 }
 
 function formatDate(val) {
@@ -80,16 +78,18 @@ function ProgressRing({ pct, size = 64, stroke = 5, color = 'var(--gold)' }) {
 function StatusSelect({ value, onChange, disabled, saving }) {
   return (
     <div className="flex items-center gap-1.5">
-      {saving && <span className="text-xs text-slate-400">Saving…</span>}
+      {saving && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
         disabled={disabled}
-        className="text-xs border border-slate-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[#FFD500] disabled:opacity-40 bg-white text-slate-700 cursor-pointer"
+        className="text-xs rounded-lg px-2 py-1 focus:outline-none disabled:opacity-40 bg-white cursor-pointer"
+        style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
       >
         <option value="not_started">Not Started</option>
         <option value="in_progress">In Progress</option>
         <option value="complete">Complete</option>
+        <option value="not_required">Not Required</option>
       </select>
     </div>
   )
@@ -108,6 +108,16 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   const [editingRaid, setEditingRaid] = useState(null)
   const [editRaidData, setEditRaidData] = useState({})
 
+  // QA notes
+  const [expandedQANote, setExpandedQANote] = useState(null)
+  const [qaNoteText, setQaNoteText] = useState({})
+  const [savingQANote, setSavingQANote] = useState(null)
+
+  // Partner invite
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviting, setInviting] = useState(false)
+  const [accessEmails, setAccessEmails] = useState([])
+
   useEffect(() => { fetchData() }, [id])
 
   async function fetchData() {
@@ -119,6 +129,12 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
       } else {
         setImpl(data)
         setRaidItems(data.raid || [])
+        setAccessEmails(data.accessEmails || [])
+        const notes = {}
+        Object.keys(data.qaSteps || {}).forEach(k => {
+          if (k.endsWith('_notes')) notes[k.replace('_notes', '')] = data.qaSteps[k]
+        })
+        setQaNoteText(notes)
       }
     } catch {
       setError('Failed to load your implementation. Please refresh.')
@@ -144,6 +160,16 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
     setSaving(null)
   }
 
+  async function handleSaveQANote(stepKey) {
+    const text = qaNoteText[stepKey] || ''
+    setSavingQANote(stepKey)
+    try {
+      await updateTouchPoint(credential, id, stepKey + '_notes', text)
+      setImpl(p => ({ ...p, qaSteps: { ...p.qaSteps, [stepKey + '_notes']: text } }))
+    } catch { setError('Failed to save note.') }
+    setSavingQANote(null)
+  }
+
   async function handleAddRaid(e) {
     e.preventDefault()
     if (!newRaid.title.trim()) return
@@ -157,20 +183,33 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
     setAddingRaid(false)
   }
 
-  async function handleUpdateRaid(id) {
+  async function handleUpdateRaid(raidId) {
     try {
-      await updateRaidItem(credential, id, editRaidData)
-      setRaidItems(p => p.map(r => r.id === id ? { ...r, ...editRaidData } : r))
+      await updateRaidItem(credential, raidId, editRaidData)
+      setRaidItems(p => p.map(r => r.id === raidId ? { ...r, ...editRaidData } : r))
       setEditingRaid(null)
     } catch { setError('Failed to update.') }
   }
 
-  async function handleDeleteRaid(id) {
+  async function handleDeleteRaid(raidId) {
     if (!confirm('Delete this RAID item?')) return
     try {
-      await deleteRaidItem(credential, id)
-      setRaidItems(p => p.filter(r => r.id !== id))
+      await deleteRaidItem(credential, raidId)
+      setRaidItems(p => p.filter(r => r.id !== raidId))
     } catch { setError('Failed to delete.') }
+  }
+
+  async function handleInvite(e) {
+    e.preventDefault()
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email || accessEmails.includes(email)) return
+    setInviting(true)
+    try {
+      await addAccess(credential, id, email)
+      setAccessEmails(p => [...p, email])
+      setInviteEmail('')
+    } catch { setError('Failed to invite.') }
+    setInviting(false)
   }
 
   if (loading) return (
@@ -189,8 +228,12 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   const tp = impl?.touchPoints || {}
   const qa = impl?.qaSteps || {}
 
-  const tpPct = Math.round(TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length / TOUCH_POINTS.length * 100)
-  const qaPct = Math.round(QA_STEPS.filter(x => qa[x.key] === 'complete').length / QA_STEPS.length * 100)
+  const tpRequired = TOUCH_POINTS.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
+  const tpCompleted = TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length
+  const qaRequired = QA_STEPS.filter(x => (qa[x.key] || 'not_started') !== 'not_required')
+  const qaCompleted = QA_STEPS.filter(x => qa[x.key] === 'complete').length
+  const tpPct = tpRequired.length === 0 ? 100 : Math.round(tpCompleted / tpRequired.length * 100)
+  const qaPct = qaRequired.length === 0 ? 100 : Math.round(qaCompleted / qaRequired.length * 100)
   const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
 
   return (
@@ -199,7 +242,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
 
-        {/* ── Hero header ── */}
+        {/* Hero header */}
         <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div>
@@ -210,7 +253,6 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
               <h1 className="font-display text-2xl font-semibold" style={{ color: 'var(--ink)' }}>{impl?.client_name}</h1>
               <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>Implementation Overview</p>
             </div>
-            {/* Summary rings */}
             <div className="flex items-center gap-8 sm:gap-10">
               <div className="flex flex-col items-center gap-1">
                 <div className="relative">
@@ -237,10 +279,43 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
           </div>
         </div>
 
-        {/* ── Row 1: Key Dates + Implementation Progress ── */}
+        {/* Invite team members */}
+        <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
+          <h2 className="text-sm font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--ink)' }}>Team Access</h2>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {accessEmails.length === 0 ? (
+              <span className="text-sm" style={{ color: 'var(--muted)' }}>No teammates added yet.</span>
+            ) : accessEmails.map(email => (
+              <span key={email} className="inline-flex items-center text-xs font-medium px-2.5 py-1 rounded-full" style={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>
+                {email}
+              </span>
+            ))}
+          </div>
+          <form onSubmit={handleInvite} className="flex gap-2 max-w-sm">
+            <input
+              type="email"
+              required
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              placeholder="colleague@company.com"
+              className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+              style={{ border: '1px solid var(--hairline)' }}
+            />
+            <button
+              type="submit"
+              disabled={inviting}
+              className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90"
+              style={{ background: 'var(--gold)' }}
+            >
+              {inviting ? 'Inviting…' : 'Invite'}
+            </button>
+          </form>
+        </div>
+
+        {/* Row 1: Key Dates + Implementation Progress */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-          {/* Key Dates — 2 cols */}
+          {/* Key Dates */}
           <div className="lg:col-span-2 bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <h2 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: 'var(--ink)' }}>Key Dates</h2>
             <div className="space-y-3">
@@ -258,14 +333,14 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
             </div>
           </div>
 
-          {/* Implementation Touch Points — 3 cols */}
+          {/* Implementation Progress */}
           <div className="lg:col-span-3 bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Implementation Progress</h2>
               <span className="font-mono text-xs font-semibold text-black px-2 py-0.5 rounded-full" style={{ background: 'var(--gold)' }}>{tpPct}%</span>
             </div>
             <div className="mb-5">
-              <RolloutRail total={TOUCH_POINTS.length} completed={TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length} color="var(--gold)" />
+              <RolloutRail total={tpRequired.length} completed={tpCompleted} color="var(--gold)" />
             </div>
             <div className="space-y-0.5">
               {TOUCH_POINTS.map(tp_ => {
@@ -273,7 +348,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
                 return (
                   <div key={tp_.key} className="flex items-center justify-between py-2.5 border-b last:border-0 group" style={{ borderColor: 'var(--paper)' }}>
                     <div className="flex items-center gap-3">
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${TP_STATUS_COLORS[status]}`} />
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${TP_STATUS_COLORS[status] || 'bg-slate-200'}`} />
                       <span className="text-sm" style={{ color: 'var(--ink)' }}>{tp_.label}</span>
                     </div>
                     <StatusSelect
@@ -289,7 +364,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
           </div>
         </div>
 
-        {/* ── Row 2: QA + RAID ── */}
+        {/* Row 2: QA + RAID */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* QA Peer Reviews */}
@@ -299,24 +374,62 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
               <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: qaPct === 100 ? 'var(--moss-bg)' : 'var(--arctic)', color: qaPct === 100 ? 'var(--moss)' : '#fff' }}>{qaPct}%</span>
             </div>
             <div className="mb-5">
-              <RolloutRail total={QA_STEPS.length} completed={QA_STEPS.filter(x => qa[x.key] === 'complete').length} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} />
+              <RolloutRail total={qaRequired.length} completed={qaCompleted} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} />
             </div>
             <div className="space-y-0.5">
               {QA_STEPS.map((step, i) => {
                 const status = qa[step.key] || 'not_started'
+                const noteExpanded = expandedQANote === step.key
+                const currentNote = qaNoteText[step.key] || ''
                 return (
-                  <div key={step.key} className="flex items-center justify-between py-2.5 border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs w-4" style={{ color: 'var(--muted)' }}>{i + 1}</span>
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${TP_STATUS_COLORS[status]}`} />
-                      <span className="text-sm" style={{ color: 'var(--ink)' }}>{step.label}</span>
+                  <div key={step.key} className="border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
+                    <div className="flex items-center justify-between py-2.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono text-xs w-4 flex-shrink-0" style={{ color: 'var(--muted)' }}>{i + 1}</span>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${TP_STATUS_COLORS[status] || 'bg-slate-200'}`} />
+                        <span className="text-sm truncate" style={{ color: 'var(--ink)' }}>{step.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <button
+                          onClick={() => setExpandedQANote(noteExpanded ? null : step.key)}
+                          className="text-xs font-medium"
+                          style={{ color: currentNote ? 'var(--arctic)' : 'var(--muted)' }}
+                        >
+                          {currentNote ? 'Note ✓' : 'Note'}
+                        </button>
+                        <StatusSelect
+                          value={status}
+                          onChange={v => handleQAChange(step.key, v)}
+                          disabled={saving === step.key}
+                          saving={saving === step.key}
+                        />
+                      </div>
                     </div>
-                    <StatusSelect
-                      value={status}
-                      onChange={v => handleQAChange(step.key, v)}
-                      disabled={saving === step.key}
-                      saving={saving === step.key}
-                    />
+                    {noteExpanded && (
+                      <div className="pb-3 pl-7">
+                        <textarea
+                          value={currentNote}
+                          onChange={e => setQaNoteText(n => ({ ...n, [step.key]: e.target.value }))}
+                          rows={3}
+                          placeholder="Add QA feedback or notes…"
+                          className="w-full rounded-lg px-3 py-2 text-xs resize-none focus:outline-none"
+                          style={{ border: '1px solid var(--hairline)', background: 'var(--paper)', color: 'var(--ink)' }}
+                        />
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <button
+                            onClick={() => handleSaveQANote(step.key)}
+                            disabled={savingQANote === step.key}
+                            className="text-xs font-medium px-3 py-1 rounded-lg disabled:opacity-50 text-black"
+                            style={{ background: 'var(--gold)' }}
+                          >
+                            {savingQANote === step.key ? 'Saving…' : 'Save note'}
+                          </button>
+                          <button onClick={() => setExpandedQANote(null)} className="text-xs" style={{ color: 'var(--muted)' }}>
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -340,39 +453,45 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
             </div>
 
             {showAddRaid && (
-              <form onSubmit={handleAddRaid} className="mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 text-sm">
+              <form onSubmit={handleAddRaid} className="mb-4 p-3 rounded-xl space-y-2.5 text-sm" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs text-slate-500 mb-1">Type</label>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>Type</label>
                     <select value={newRaid.type} onChange={e => setNewRaid(r => ({ ...r, type: e.target.value }))}
-                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
+                      className="w-full rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none"
+                      style={{ border: '1px solid var(--hairline)' }}>
                       {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-500 mb-1">Status</label>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>Status</label>
                     <select value={newRaid.status} onChange={e => setNewRaid(r => ({ ...r, status: e.target.value }))}
-                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
+                      className="w-full rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none"
+                      style={{ border: '1px solid var(--hairline)' }}>
                       {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
                     </select>
                   </div>
                 </div>
                 <input type="text" required value={newRaid.title} onChange={e => setNewRaid(r => ({ ...r, title: e.target.value }))}
                   placeholder="Title *"
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
+                  className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                  style={{ border: '1px solid var(--hairline)' }} />
                 <textarea value={newRaid.description} onChange={e => setNewRaid(r => ({ ...r, description: e.target.value }))}
                   rows={2} placeholder="Description"
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500] resize-none" />
+                  className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none resize-none"
+                  style={{ border: '1px solid var(--hairline)' }} />
                 <input type="text" value={newRaid.owner} onChange={e => setNewRaid(r => ({ ...r, owner: e.target.value }))}
                   placeholder="Owner"
-                  className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
+                  className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                  style={{ border: '1px solid var(--hairline)' }} />
                 <div className="flex gap-2">
                   <button type="submit" disabled={addingRaid}
-                    className="bg-[#FFD500] hover:bg-[#e6bf00] disabled:opacity-50 text-black text-xs font-medium px-3 py-1.5 rounded-lg">
+                    className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50"
+                    style={{ background: 'var(--gold)' }}>
                     {addingRaid ? 'Adding…' : 'Add'}
                   </button>
                   <button type="button" onClick={() => { setShowAddRaid(false); setNewRaid(EMPTY_RAID) }}
-                    className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1.5">Cancel</button>
+                    className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
                 </div>
               </form>
             )}
@@ -386,30 +505,36 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
                   <p className="text-sm">No RAID items yet</p>
                 </div>
               ) : raidItems.map(item => (
-                <div key={item.id} className="border border-slate-100 rounded-xl p-3">
+                <div key={item.id} className="rounded-xl p-3" style={{ border: '1px solid var(--hairline)' }}>
                   {editingRaid === item.id ? (
                     <div className="space-y-2">
                       <div className="grid grid-cols-2 gap-2">
                         <select value={editRaidData.type} onChange={e => setEditRaidData(d => ({ ...d, type: e.target.value }))}
-                          className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
+                          className="rounded-lg px-2 py-1 text-xs bg-white focus:outline-none"
+                          style={{ border: '1px solid var(--hairline)' }}>
                           {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
                         </select>
                         <select value={editRaidData.status} onChange={e => setEditRaidData(d => ({ ...d, status: e.target.value }))}
-                          className="border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[#FFD500]">
+                          className="rounded-lg px-2 py-1 text-xs bg-white focus:outline-none"
+                          style={{ border: '1px solid var(--hairline)' }}>
                           {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
                         </select>
                       </div>
                       <input type="text" value={editRaidData.title} onChange={e => setEditRaidData(d => ({ ...d, title: e.target.value }))}
-                        className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
+                        className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none"
+                        style={{ border: '1px solid var(--hairline)' }} />
                       <textarea value={editRaidData.description} onChange={e => setEditRaidData(d => ({ ...d, description: e.target.value }))}
-                        rows={2} className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500] resize-none" />
+                        rows={2} className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none resize-none"
+                        style={{ border: '1px solid var(--hairline)' }} />
                       <input type="text" value={editRaidData.owner} onChange={e => setEditRaidData(d => ({ ...d, owner: e.target.value }))}
-                        placeholder="Owner" className="w-full border border-slate-300 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD500]" />
+                        placeholder="Owner" className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none"
+                        style={{ border: '1px solid var(--hairline)' }} />
                       <div className="flex gap-2">
                         <button onClick={() => handleUpdateRaid(item.id)}
-                          className="bg-[#FFD500] text-black text-xs font-medium px-3 py-1 rounded-lg">Save</button>
+                          className="text-black text-xs font-medium px-3 py-1 rounded-lg"
+                          style={{ background: 'var(--gold)' }}>Save</button>
                         <button onClick={() => setEditingRaid(null)}
-                          className="text-xs text-slate-500 px-2 py-1">Cancel</button>
+                          className="text-xs px-2 py-1" style={{ color: 'var(--muted)' }}>Cancel</button>
                       </div>
                     </div>
                   ) : (
@@ -425,14 +550,14 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
                           <button onClick={() => { setEditingRaid(item.id); setEditRaidData({ type: item.type, title: item.title, description: item.description, status: item.status, owner: item.owner }) }}
-                            className="text-xs text-[#019ACE] hover:text-[#017aaa]">Edit</button>
+                            className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>Edit</button>
                           <button onClick={() => handleDeleteRaid(item.id)}
                             className="text-xs text-red-400 hover:text-red-600">Delete</button>
                         </div>
                       </div>
-                      <p className="text-sm font-medium text-slate-800 mt-1">{item.title}</p>
-                      {item.description && <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{item.description}</p>}
-                      <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-400">
+                      <p className="text-sm font-medium mt-1" style={{ color: 'var(--ink)' }}>{item.title}</p>
+                      {item.description && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>{item.description}</p>}
+                      <div className="flex items-center gap-3 mt-1.5 text-xs font-mono" style={{ color: 'var(--muted)' }}>
                         {item.owner && <span>Owner: {item.owner}</span>}
                         {item.raised_date && <span>{formatDate(item.raised_date)}</span>}
                       </div>

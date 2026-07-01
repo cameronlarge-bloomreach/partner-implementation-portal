@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getAllImplementations, updateDates, updateTouchPoint, addAccess, removeAccess, updateImplementationStatus, deleteImplementation, updateSlackChannel } from '../api'
+import {
+  getAllImplementations, updateDates, updateTouchPoint,
+  addAccess, removeAccess, updateImplementationStatus,
+  deleteImplementation, updateSlackChannel,
+  addRaidItem, updateRaidItem, deleteRaidItem,
+} from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 
 const DATE_FIELDS = [
-  { key: 'contract_sign_date', label: 'Contract Signed' },
   { key: 'planned_completion_date', label: 'Planned Completion', note: 'Set at start' },
-  { key: 'target_completion_date', label: 'Target Completion', note: 'Updated monthly' },
   { key: 'actual_completion_date', label: 'Actual Completion' },
   { key: 'planned_go_live_date', label: 'Planned Go Live', note: 'Set at start' },
-  { key: 'target_time_to_live', label: 'Target Go Live', note: 'Updated monthly' },
   { key: 'actual_time_to_live', label: 'Actual Go Live' },
 ]
 
@@ -33,6 +35,10 @@ const QA_STEPS = [
   { key: 'qa_peer_review_6', label: 'Expiration & Data Cleanliness' },
 ]
 
+const RAID_TYPES = ['Risk', 'Action', 'Issue', 'Dependency']
+const RAID_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
+const EMPTY_RAID = { type: 'Risk', title: '', description: '', status: 'Open', owner: '' }
+
 const RAID_TYPE_STYLES = {
   Risk:       'bg-red-50 text-red-700 ring-1 ring-red-200',
   Action:     'bg-blue-50 text-blue-700 ring-1 ring-blue-200',
@@ -48,9 +54,10 @@ const RAID_STATUS_STYLES = {
 }
 
 const TP_DOT = {
-  complete:    'bg-emerald-500',
-  in_progress: 'bg-blue-500',
-  not_started: 'bg-slate-200',
+  complete:     'bg-emerald-500',
+  in_progress:  'bg-blue-500',
+  not_started:  'bg-slate-200',
+  not_required: 'bg-violet-200',
 }
 
 function formatDate(val) {
@@ -90,6 +97,19 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [savingSlack, setSavingSlack] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
 
+  // RAID
+  const [raidItems, setRaidItems] = useState([])
+  const [showAddRaid, setShowAddRaid] = useState(false)
+  const [newRaid, setNewRaid] = useState(EMPTY_RAID)
+  const [addingRaid, setAddingRaid] = useState(false)
+  const [editingRaid, setEditingRaid] = useState(null)
+  const [editRaidData, setEditRaidData] = useState({})
+
+  // QA notes
+  const [expandedQANote, setExpandedQANote] = useState(null)
+  const [qaNoteText, setQaNoteText] = useState({})
+  const [savingQANote, setSavingQANote] = useState(null)
+
   useEffect(() => {
     getAllImplementations(credential).then(data => {
       const impl = (Array.isArray(data) ? data : []).find(i => i.id === id)
@@ -99,6 +119,12 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
         DATE_FIELDS.forEach(f => { d[f.key] = impl[f.key] || '' })
         setDates(d)
         setSlackChannelId(impl.slackChannelId || '')
+        setRaidItems(impl.raid || [])
+        const notes = {}
+        Object.keys(impl.qaSteps || {}).forEach(k => {
+          if (k.endsWith('_notes')) notes[k.replace('_notes', '')] = impl.qaSteps[k]
+        })
+        setQaNoteText(notes)
       }
       setLoading(false)
     })
@@ -129,6 +155,16 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
       setImplementation(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [key]: status } }))
     } catch { /* silent */ }
     setSavingTP(null)
+  }
+
+  async function handleSaveQANote(stepKey) {
+    const text = qaNoteText[stepKey] || ''
+    setSavingQANote(stepKey)
+    try {
+      await updateTouchPoint(credential, id, stepKey + '_notes', text)
+      setImplementation(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [stepKey + '_notes']: text } }))
+    } catch { /* silent */ }
+    setSavingQANote(null)
   }
 
   async function handleAddAccess(e) {
@@ -184,6 +220,35 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
     }
   }
 
+  async function handleAddRaid(e) {
+    e.preventDefault()
+    if (!newRaid.title.trim()) return
+    setAddingRaid(true)
+    try {
+      const res = await addRaidItem(credential, id, newRaid)
+      setRaidItems(p => [...p, { ...newRaid, id: res.id, raised_date: new Date().toISOString().slice(0, 10) }])
+      setNewRaid(EMPTY_RAID)
+      setShowAddRaid(false)
+    } catch { /* silent */ }
+    setAddingRaid(false)
+  }
+
+  async function handleUpdateRaid(raidId) {
+    try {
+      await updateRaidItem(credential, raidId, editRaidData)
+      setRaidItems(p => p.map(r => r.id === raidId ? { ...r, ...editRaidData } : r))
+      setEditingRaid(null)
+    } catch { /* silent */ }
+  }
+
+  async function handleDeleteRaid(raidId) {
+    if (!confirm('Delete this RAID item?')) return
+    try {
+      await deleteRaidItem(credential, raidId)
+      setRaidItems(p => p.filter(r => r.id !== raidId))
+    } catch { /* silent */ }
+  }
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--paper)' }}>
       <div className="text-sm" style={{ color: 'var(--muted)' }}>Loading…</div>
@@ -199,13 +264,14 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
 
   const tp = implementation.touchPoints || {}
   const qa = implementation.qaSteps || {}
-  const raidItems = implementation.raid || []
-
-  const tpCompleted = TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length
-  const qaCompleted = QA_STEPS.filter(x => qa[x.key] === 'complete').length
-  const tpPct = Math.round(tpCompleted / TOUCH_POINTS.length * 100)
-  const qaPct = Math.round(qaCompleted / QA_STEPS.length * 100)
   const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
+
+  const tpRequired = TOUCH_POINTS.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
+  const tpCompleted = TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length
+  const qaRequired = QA_STEPS.filter(x => (qa[x.key] || 'not_started') !== 'not_required')
+  const qaCompleted = QA_STEPS.filter(x => qa[x.key] === 'complete').length
+  const tpPct = tpRequired.length === 0 ? 100 : Math.round(tpCompleted / tpRequired.length * 100)
+  const qaPct = qaRequired.length === 0 ? 100 : Math.round(qaCompleted / qaRequired.length * 100)
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
@@ -338,10 +404,10 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           </form>
         </div>
 
-        {/* Row 1: Key Dates (editable) + Implementation Progress */}
+        {/* Row 1: Key Dates + Implementation Progress */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-          {/* Key Dates — admin edits */}
+          {/* Key Dates */}
           <div className="lg:col-span-2 bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Key Dates</h2>
@@ -371,14 +437,14 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
             </form>
           </div>
 
-          {/* Implementation Touch Points — editable */}
+          {/* Implementation Progress */}
           <div className="lg:col-span-3 bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Implementation Progress</h2>
               <span className="font-mono text-xs font-semibold text-black px-2 py-0.5 rounded-full" style={{ background: 'var(--gold)' }}>{tpPct}%</span>
             </div>
             <div className="mb-5">
-              <RolloutRail total={TOUCH_POINTS.length} completed={tpCompleted} color="var(--gold)" />
+              <RolloutRail total={tpRequired.length} completed={tpCompleted} color="var(--gold)" />
             </div>
             <div className="space-y-0.5">
               {TOUCH_POINTS.map(item => {
@@ -387,7 +453,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                 return (
                   <div key={item.key} className="flex items-center justify-between py-2.5 border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
                     <div className="flex items-center gap-3">
-                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${TP_DOT[status]}`} />
+                      <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${TP_DOT[status] || 'bg-slate-200'}`} />
                       <span className="text-sm" style={{ color: 'var(--ink)' }}>{item.label}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
@@ -398,6 +464,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                         <option value="not_started">Not Started</option>
                         <option value="in_progress">In Progress</option>
                         <option value="complete">Complete</option>
+                        <option value="not_required">Not Required</option>
                       </select>
                     </div>
                   </div>
@@ -410,51 +477,142 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
         {/* Row 2: QA + RAID */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-          {/* QA Steps — editable */}
+          {/* QA Steps */}
           <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>QA Peer Reviews</h2>
               <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: qaPct === 100 ? 'var(--moss-bg)' : 'var(--arctic)', color: qaPct === 100 ? 'var(--moss)' : '#fff' }}>{qaPct}%</span>
             </div>
             <div className="mb-5">
-              <RolloutRail total={QA_STEPS.length} completed={qaCompleted} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} />
+              <RolloutRail total={qaRequired.length} completed={qaCompleted} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} />
             </div>
             <div className="space-y-0.5">
               {QA_STEPS.map((step, i) => {
                 const status = qa[step.key] || 'not_started'
                 const isSaving = savingTP === step.key
+                const noteExpanded = expandedQANote === step.key
+                const currentNote = qaNoteText[step.key] || ''
                 return (
-                  <div key={step.key} className="flex items-center justify-between py-2.5 border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs w-4" style={{ color: 'var(--muted)' }}>{i + 1}</span>
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${TP_DOT[status]}`} />
-                      <span className="text-sm" style={{ color: 'var(--ink)' }}>{step.label}</span>
+                  <div key={step.key} className="border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
+                    <div className="flex items-center justify-between py-2.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="font-mono text-xs w-4 flex-shrink-0" style={{ color: 'var(--muted)' }}>{i + 1}</span>
+                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${TP_DOT[status] || 'bg-slate-200'}`} />
+                        <span className="text-sm truncate" style={{ color: 'var(--ink)' }}>{step.label}</span>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <button
+                          onClick={() => setExpandedQANote(noteExpanded ? null : step.key)}
+                          className="text-xs font-medium"
+                          style={{ color: currentNote ? 'var(--arctic)' : 'var(--muted)' }}
+                        >
+                          {currentNote ? 'Note ✓' : 'Note'}
+                        </button>
+                        {isSaving && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
+                        <select value={status} onChange={e => handleQAChange(step.key, e.target.value)} disabled={isSaving}
+                          className="text-xs rounded-lg px-2 py-1 focus:outline-none disabled:opacity-40 bg-white cursor-pointer"
+                          style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
+                          <option value="not_started">Not Started</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="complete">Complete</option>
+                          <option value="not_required">Not Required</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      {isSaving && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                      <select value={status} onChange={e => handleQAChange(step.key, e.target.value)} disabled={isSaving}
-                        className="text-xs rounded-lg px-2 py-1 focus:outline-none disabled:opacity-40 bg-white cursor-pointer"
-                        style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
-                        <option value="not_started">Not Started</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="complete">Complete</option>
-                      </select>
-                    </div>
+                    {noteExpanded && (
+                      <div className="pb-3 pl-7">
+                        <textarea
+                          value={currentNote}
+                          onChange={e => setQaNoteText(n => ({ ...n, [step.key]: e.target.value }))}
+                          rows={3}
+                          placeholder="Add QA feedback or notes…"
+                          className="w-full rounded-lg px-3 py-2 text-xs resize-none focus:outline-none"
+                          style={{ border: '1px solid var(--hairline)', background: 'var(--paper)', color: 'var(--ink)' }}
+                        />
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <button
+                            onClick={() => handleSaveQANote(step.key)}
+                            disabled={savingQANote === step.key}
+                            className="text-xs font-medium px-3 py-1 rounded-lg disabled:opacity-50 text-black"
+                            style={{ background: 'var(--gold)' }}
+                          >
+                            {savingQANote === step.key ? 'Saving…' : 'Save note'}
+                          </button>
+                          <button onClick={() => setExpandedQANote(null)} className="text-xs" style={{ color: 'var(--muted)' }}>
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )
               })}
             </div>
           </div>
 
-          {/* RAID Log — read-only */}
+          {/* RAID Log — editable */}
           <div className="bg-white rounded-2xl p-6 flex flex-col" style={{ border: '1px solid var(--hairline)' }}>
-            <div className="mb-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>RAID Log</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-                Logged by the partner · {raidItems.length} item{raidItems.length !== 1 ? 's' : ''}
-                {openRaid > 0 && <span className="ml-1" style={{ color: 'var(--rust)' }}>· {openRaid} open</span>}
-              </p>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>RAID Log</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                  {raidItems.length} item{raidItems.length !== 1 ? 's' : ''}
+                  {openRaid > 0 && <span className="ml-1" style={{ color: 'var(--rust)' }}>· {openRaid} open</span>}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAddRaid(v => !v)}
+                className="text-xs hover:opacity-90 text-black font-medium px-3 py-1.5 rounded-lg transition-opacity"
+                style={{ background: 'var(--gold)' }}
+              >
+                + Add
+              </button>
             </div>
+
+            {showAddRaid && (
+              <form onSubmit={handleAddRaid} className="mb-4 p-3 rounded-xl space-y-2.5 text-sm" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>Type</label>
+                    <select value={newRaid.type} onChange={e => setNewRaid(r => ({ ...r, type: e.target.value }))}
+                      className="w-full rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none"
+                      style={{ border: '1px solid var(--hairline)' }}>
+                      {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>Status</label>
+                    <select value={newRaid.status} onChange={e => setNewRaid(r => ({ ...r, status: e.target.value }))}
+                      className="w-full rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none"
+                      style={{ border: '1px solid var(--hairline)' }}>
+                      {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <input type="text" required value={newRaid.title} onChange={e => setNewRaid(r => ({ ...r, title: e.target.value }))}
+                  placeholder="Title *"
+                  className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                  style={{ border: '1px solid var(--hairline)' }} />
+                <textarea value={newRaid.description} onChange={e => setNewRaid(r => ({ ...r, description: e.target.value }))}
+                  rows={2} placeholder="Description"
+                  className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none resize-none"
+                  style={{ border: '1px solid var(--hairline)' }} />
+                <input type="text" value={newRaid.owner} onChange={e => setNewRaid(r => ({ ...r, owner: e.target.value }))}
+                  placeholder="Owner"
+                  className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                  style={{ border: '1px solid var(--hairline)' }} />
+                <div className="flex gap-2">
+                  <button type="submit" disabled={addingRaid}
+                    className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50"
+                    style={{ background: 'var(--gold)' }}>
+                    {addingRaid ? 'Adding…' : 'Add'}
+                  </button>
+                  <button type="button" onClick={() => { setShowAddRaid(false); setNewRaid(EMPTY_RAID) }}
+                    className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
+                </div>
+              </form>
+            )}
+
             <div className="flex-1 overflow-y-auto space-y-2 max-h-96">
               {raidItems.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10" style={{ color: 'var(--hairline)' }}>
@@ -465,20 +623,64 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                 </div>
               ) : raidItems.map(item => (
                 <div key={item.id} className="rounded-xl p-3" style={{ border: '1px solid var(--hairline)' }}>
-                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${RAID_TYPE_STYLES[item.type] || 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}>
-                      {item.type}
-                    </span>
-                    <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${RAID_STATUS_STYLES[item.status] || 'bg-slate-100 text-slate-600'}`}>
-                      {item.status}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{item.title}</p>
-                  {item.description && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>{item.description}</p>}
-                  <div className="flex items-center gap-3 mt-1.5 text-xs font-mono" style={{ color: 'var(--muted)' }}>
-                    {item.owner && <span>Owner: {item.owner}</span>}
-                    {item.raised_date && <span>{formatDate(item.raised_date)}</span>}
-                  </div>
+                  {editingRaid === item.id ? (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <select value={editRaidData.type} onChange={e => setEditRaidData(d => ({ ...d, type: e.target.value }))}
+                          className="rounded-lg px-2 py-1 text-xs bg-white focus:outline-none"
+                          style={{ border: '1px solid var(--hairline)' }}>
+                          {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
+                        </select>
+                        <select value={editRaidData.status} onChange={e => setEditRaidData(d => ({ ...d, status: e.target.value }))}
+                          className="rounded-lg px-2 py-1 text-xs bg-white focus:outline-none"
+                          style={{ border: '1px solid var(--hairline)' }}>
+                          {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <input type="text" value={editRaidData.title} onChange={e => setEditRaidData(d => ({ ...d, title: e.target.value }))}
+                        className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none"
+                        style={{ border: '1px solid var(--hairline)' }} />
+                      <textarea value={editRaidData.description} onChange={e => setEditRaidData(d => ({ ...d, description: e.target.value }))}
+                        rows={2} className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none resize-none"
+                        style={{ border: '1px solid var(--hairline)' }} />
+                      <input type="text" value={editRaidData.owner} onChange={e => setEditRaidData(d => ({ ...d, owner: e.target.value }))}
+                        placeholder="Owner" className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none"
+                        style={{ border: '1px solid var(--hairline)' }} />
+                      <div className="flex gap-2">
+                        <button onClick={() => handleUpdateRaid(item.id)}
+                          className="text-black text-xs font-medium px-3 py-1 rounded-lg"
+                          style={{ background: 'var(--gold)' }}>Save</button>
+                        <button onClick={() => setEditingRaid(null)}
+                          className="text-xs px-2 py-1" style={{ color: 'var(--muted)' }}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${RAID_TYPE_STYLES[item.type] || 'bg-slate-50 text-slate-600 ring-1 ring-slate-200'}`}>
+                            {item.type}
+                          </span>
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${RAID_STATUS_STYLES[item.status] || 'bg-slate-100 text-slate-600'}`}>
+                            {item.status}
+                          </span>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => { setEditingRaid(item.id); setEditRaidData({ type: item.type, title: item.title, description: item.description, status: item.status, owner: item.owner }) }}
+                            className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>Edit</button>
+                          <button onClick={() => handleDeleteRaid(item.id)}
+                            className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                        </div>
+                      </div>
+                      <p className="text-sm font-medium mt-1" style={{ color: 'var(--ink)' }}>{item.title}</p>
+                      {item.description && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>{item.description}</p>}
+                      <div className="flex items-center gap-3 mt-1.5 text-xs font-mono" style={{ color: 'var(--muted)' }}>
+                        {item.owner && <span>Owner: {item.owner}</span>}
+                        {item.raised_date && <span>{formatDate(item.raised_date)}</span>}
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
