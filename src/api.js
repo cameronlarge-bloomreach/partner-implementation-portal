@@ -275,6 +275,26 @@ export async function requestMagicLink(email) {
   return error ? fail(error) : { ok: true }
 }
 
+export async function signInWithPassword(email, password) {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: email.trim().toLowerCase(),
+    password,
+  })
+  return error ? fail(error) : { ok: true }
+}
+
+export async function requestPasswordReset(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    redirectTo: window.location.origin + window.location.pathname,
+  })
+  return error ? fail(error) : { ok: true }
+}
+
+export async function updatePassword(password) {
+  const { error } = await supabase.auth.updateUser({ password })
+  return error ? fail(error) : { ok: true }
+}
+
 export async function signOut() {
   await supabase.auth.signOut()
 }

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
 import { loadUserInfo, signOut } from './api'
 import Login from './pages/Login'
+import SetPassword from './pages/SetPassword'
 import VerifyMagicLink from './pages/VerifyMagicLink'
 import PartnerSelect from './pages/PartnerSelect'
 import PartnerDashboard from './pages/PartnerDashboard'
@@ -29,12 +30,18 @@ export default function App() {
   // userInfo = { email, name, isAdmin, implementations } or { error, email }.
   const [session, setSession] = useState(undefined)
   const [userInfo, setUserInfo] = useState(null)
+  const navigate = useNavigate()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      setSession(s ?? null)
+      // Arriving via a "Forgot password?" recovery email: send the user
+      // straight to the set-password screen.
+      if (event === 'PASSWORD_RECOVERY') navigate('/set-password', { replace: true })
+    })
     return () => sub.subscription.unsubscribe()
-  }, [])
+  }, [navigate])
 
   useEffect(() => {
     let cancelled = false
@@ -80,6 +87,10 @@ export default function App() {
         }
       />
       <Route path="/verify" element={<VerifyMagicLink />} />
+      <Route
+        path="/set-password"
+        element={!credential ? <Navigate to="/login" replace /> : <SetPassword />}
+      />
       <Route
         path="/select"
         element={
