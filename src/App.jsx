@@ -1,14 +1,14 @@
-import { useState } from 'react'
-import { GoogleOAuthProvider } from '@react-oauth/google'
+import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { supabase } from './supabaseClient'
+import { loadUserInfo, signOut } from './api'
 import Login from './pages/Login'
 import VerifyMagicLink from './pages/VerifyMagicLink'
 import PartnerSelect from './pages/PartnerSelect'
 import PartnerDashboard from './pages/PartnerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminImplementation from './pages/AdminImplementation'
-
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+import ControlCentre from './pages/ControlCentre'
 
 function defaultRouteFor(userInfo) {
   if (userInfo?.isAdmin) return '/admin'
@@ -16,80 +16,125 @@ function defaultRouteFor(userInfo) {
   return '/select'
 }
 
+function CenteredMessage({ children }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--paper)' }}>
+      <div className="text-center max-w-sm px-6 text-sm" style={{ color: 'var(--muted)' }}>{children}</div>
+    </div>
+  )
+}
+
 export default function App() {
-  // credential = auth token (Google ID token or magic-link session token)
-  // userInfo = { email, name, picture, isAdmin, implementations: [{id, partner_name, client_name}] }
-  const [credential, setCredential] = useState(null)
+  // session: undefined = still checking storage/URL, null = signed out.
+  // userInfo = { email, name, isAdmin, implementations } or { error, email }.
+  const [session, setSession] = useState(undefined)
   const [userInfo, setUserInfo] = useState(null)
 
-  function handleLogin(cred, info) {
-    setCredential(cred)
-    setUserInfo(info)
-  }
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s ?? null))
+    return () => sub.subscription.unsubscribe()
+  }, [])
 
-  function handleLogout() {
-    setCredential(null)
+  useEffect(() => {
+    let cancelled = false
+    if (!session) { setUserInfo(null); return }
+    loadUserInfo(session).then(info => { if (!cancelled) setUserInfo(info) })
+    return () => { cancelled = true }
+  }, [session])
+
+  async function handleLogout() {
+    await signOut()
     setUserInfo(null)
   }
 
+  if (session === undefined) return <CenteredMessage>Loading…</CenteredMessage>
+
+  // Signed in, but this email has no implementation access and isn't admin.
+  if (session && userInfo?.error) {
+    return (
+      <CenteredMessage>
+        <p className="mb-4">
+          <strong>{userInfo.email}</strong> isn’t registered on any implementation.
+          Please contact your Bloomreach representative.
+        </p>
+        <button onClick={handleLogout} className="font-medium underline" style={{ color: 'var(--ink)' }}>
+          Sign out
+        </button>
+      </CenteredMessage>
+    )
+  }
+
+  if (session && !userInfo) return <CenteredMessage>Signing you in…</CenteredMessage>
+
+  const credential = session?.access_token ?? null
+
   return (
-    <GoogleOAuthProvider clientId={CLIENT_ID}>
-      <Routes>
-        <Route
-          path="/login"
-          element={
-            credential
-              ? <Navigate to="/" replace />
-              : <Login onLogin={handleLogin} />
-          }
-        />
-        <Route path="/verify" element={<VerifyMagicLink onLogin={handleLogin} />} />
-        <Route
-          path="/select"
-          element={
-            !credential
-              ? <Navigate to="/login" replace />
-              : <PartnerSelect userInfo={userInfo} onLogout={handleLogout} />
-          }
-        />
-        <Route
-          path="/implementation/:id"
-          element={
-            !credential
-              ? <Navigate to="/login" replace />
-              : <PartnerDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            !credential
-              ? <Navigate to="/login" replace />
-              : !userInfo?.isAdmin
-              ? <Navigate to="/" replace />
-              : <AdminDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-          }
-        />
-        <Route
-          path="/admin/implementation/:id"
-          element={
-            !credential
-              ? <Navigate to="/login" replace />
-              : !userInfo?.isAdmin
-              ? <Navigate to="/" replace />
-              : <AdminImplementation credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-          }
-        />
-        <Route
-          path="/"
-          element={
-            !credential
-              ? <Navigate to="/login" replace />
-              : <Navigate to={defaultRouteFor(userInfo)} replace />
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </GoogleOAuthProvider>
+    <Routes>
+      <Route
+        path="/login"
+        element={
+          credential
+            ? <Navigate to="/" replace />
+            : <Login />
+        }
+      />
+      <Route path="/verify" element={<VerifyMagicLink />} />
+      <Route
+        path="/select"
+        element={
+          !credential
+            ? <Navigate to="/login" replace />
+            : <PartnerSelect userInfo={userInfo} onLogout={handleLogout} />
+        }
+      />
+      <Route
+        path="/implementation/:id"
+        element={
+          !credential
+            ? <Navigate to="/login" replace />
+            : <PartnerDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          !credential
+            ? <Navigate to="/login" replace />
+            : !userInfo?.isAdmin
+            ? <Navigate to="/" replace />
+            : <AdminDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+        }
+      />
+      <Route
+        path="/admin/implementation/:id"
+        element={
+          !credential
+            ? <Navigate to="/login" replace />
+            : !userInfo?.isAdmin
+            ? <Navigate to="/" replace />
+            : <AdminImplementation credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+        }
+      />
+      <Route
+        path="/admin/control-centre"
+        element={
+          !credential
+            ? <Navigate to="/login" replace />
+            : !userInfo?.isAdmin
+            ? <Navigate to="/" replace />
+            : <ControlCentre credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+        }
+      />
+      <Route
+        path="/"
+        element={
+          !credential
+            ? <Navigate to="/login" replace />
+            : <Navigate to={defaultRouteFor(userInfo)} replace />
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }

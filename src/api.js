@@ -1,89 +1,292 @@
-// All calls go through the Apps Script Web App URL.
-// The auth token (Google ID token or magic-link session token) is sent
-// with every request so Apps Script can verify the caller and enforce
-// data isolation server-side.
+// Data layer backed by Supabase (replaces the Apps Script Web App).
+//
+// Function signatures are kept identical to the old Apps Script layer so
+// the page components don't change: every function still accepts `token`
+// as its first argument, but it is ignored — the supabase client carries
+// the session internally. Response shapes mirror the old buildImplResponse.
 
-const APPS_SCRIPT_URL = import.meta.env.VITE_APPS_SCRIPT_URL
+import { supabase } from './supabaseClient'
 
-async function request(params) {
-  const url = new URL(APPS_SCRIPT_URL)
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
-  const res = await fetch(url.toString(), { redirect: 'follow' })
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`)
-  return res.json()
+function fail(error) {
+  return { error: error.message || String(error) }
 }
 
-async function post(body) {
-  const res = await fetch(APPS_SCRIPT_URL, {
-    method: 'POST',
-    redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain' }, // Apps Script requires text/plain for doPost
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(`Request failed: ${res.status}`)
-  return res.json()
+const IMPL_DATE_KEYS = [
+  'contract_sign_date', 'planned_completion_date', 'target_completion_date',
+  'actual_completion_date', 'planned_go_live_date', 'target_time_to_live',
+  'actual_time_to_live',
+]
+
+function splitTouchPoints(rows) {
+  const touchPoints = {}
+  const qaSteps = {}
+  for (const r of rows) {
+    if (r.key.startsWith('qa_')) qaSteps[r.key] = r.status
+    else touchPoints[r.key] = r.status
+  }
+  return { touchPoints, qaSteps }
 }
 
-export async function getMyImplementations(token) {
-  return request({ action: 'getMyImplementations', token })
+function shapeRaid(r) {
+  return {
+    id: r.id,
+    type: r.type,
+    title: r.title,
+    description: r.description,
+    status: r.status,
+    owner: r.owner,
+    raised_date: r.raised_date || '',
+  }
 }
 
-export async function getImplementation(token, implementationId) {
-  return request({ action: 'getImplementation', token, implementationId })
+function shapeNote(n) {
+  return {
+    id: n.id,
+    title: n.title,
+    meeting_date: n.meeting_date || '',
+    content: n.content,
+    source: n.source,
+    granola_meeting_id: n.granola_meeting_id,
+    created_at: n.created_at,
+  }
 }
 
-export async function getAllImplementations(token) {
-  return request({ action: 'getAllImplementations', token })
+function shapeScenario(s) {
+  return { scenario_id: s.scenario_id, name: s.name, status: s.status, tags: s.tags }
 }
 
-export async function updateTouchPoint(token, implementationId, key, status) {
-  return post({ action: 'updateTouchPoint', token, implementationId, key, status })
+function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows) {
+  const { touchPoints, qaSteps } = splitTouchPoints(tpRows)
+  const resp = {
+    id: impl.id,
+    partner_name: impl.partner_name,
+    client_name: impl.client_name,
+    status: impl.status || 'active',
+    isAdmin,
+    accessEmails,
+    slackChannelId: isAdmin ? (impl.slack_channel_id || '') : undefined,
+    touchPoints,
+    qaSteps,
+    raid: raidRows.map(shapeRaid),
+    meetingNotes: isAdmin ? noteRows.map(shapeNote) : [],
+    bloomreachOrgId: isAdmin ? (impl.bloomreach_org_id || '') : undefined,
+    bloomreachOrgName: isAdmin ? (impl.bloomreach_org_name || '') : undefined,
+    scenariosSyncedAt: isAdmin ? (impl.scenarios_synced_at || '') : undefined,
+    scenarios: isAdmin ? scenarioRows.map(shapeScenario) : [],
+    profileCount: isAdmin ? (impl.profile_count ?? null) : undefined,
+    profileCountSyncedAt: isAdmin ? (impl.profile_count_synced_at || '') : undefined,
+  }
+  for (const key of IMPL_DATE_KEYS) resp[key] = impl[key] || ''
+  return resp
 }
 
-export async function updateDates(token, implementationId, dates) {
-  return post({ action: 'updateDates', token, implementationId, dates })
+async function callerIsAdmin() {
+  const { data, error } = await supabase.rpc('is_admin')
+  if (error) throw error
+  return data === true
 }
 
-export async function addRaidItem(token, implementationId, item) {
-  return post({ action: 'addRaidItem', token, implementationId, item })
+// ---- Reads ----
+
+export async function getMyImplementations() {
+  try {
+    const [isAdmin, { data: impls, error }] = await Promise.all([
+      callerIsAdmin(),
+      supabase.from('implementations').select('id, partner_name, client_name').order('partner_name'),
+    ])
+    if (error) throw error
+    if (!isAdmin && impls.length === 0) return { error: 'unauthorized' }
+    return { isAdmin, implementations: impls }
+  } catch (e) { return fail(e) }
 }
 
-export async function updateRaidItem(token, id, fields) {
-  return post({ action: 'updateRaidItem', token, id, fields })
+export async function getImplementation(_token, implementationId) {
+  try {
+    const isAdmin = await callerIsAdmin()
+    const [impl, tps, raid, access, notes, scenarios] = await Promise.all([
+      supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
+      supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
+      supabase.from('raid_items').select('*').eq('implementation_id', implementationId).order('created_at'),
+      supabase.from('access').select('email').eq('implementation_id', implementationId),
+      isAdmin
+        ? supabase.from('meeting_notes').select('*').eq('implementation_id', implementationId).order('meeting_date', { ascending: false })
+        : Promise.resolve({ data: [] }),
+      isAdmin
+        ? supabase.from('scenario_sync').select('*').eq('implementation_id', implementationId).order('name')
+        : Promise.resolve({ data: [] }),
+    ])
+    const firstError = [impl, tps, raid, access, notes, scenarios].find(r => r.error)
+    if (firstError) throw firstError.error
+    if (!impl.data) return { error: 'not_found' }
+    return buildImplResponse(
+      impl.data, tps.data, raid.data, isAdmin,
+      access.data.map(a => a.email), notes.data, scenarios.data,
+    )
+  } catch (e) { return fail(e) }
 }
 
-export async function deleteRaidItem(token, id) {
-  return post({ action: 'deleteRaidItem', token, id })
+export async function getAllImplementations() {
+  try {
+    const [impls, tps, raid, access, notes, scenarios] = await Promise.all([
+      supabase.from('implementations').select('*').order('partner_name'),
+      supabase.from('touch_points').select('implementation_id, key, status'),
+      supabase.from('raid_items').select('*').order('created_at'),
+      supabase.from('access').select('email, implementation_id'),
+      supabase.from('meeting_notes').select('*').order('meeting_date', { ascending: false }),
+      supabase.from('scenario_sync').select('*').order('name'),
+    ])
+    const firstError = [impls, tps, raid, access, notes, scenarios].find(r => r.error)
+    if (firstError) throw firstError.error
+    const byImpl = (rows) => {
+      const map = {}
+      for (const r of rows) (map[r.implementation_id] ||= []).push(r)
+      return map
+    }
+    const tpMap = byImpl(tps.data)
+    const raidMap = byImpl(raid.data)
+    const accessMap = byImpl(access.data)
+    const noteMap = byImpl(notes.data)
+    const scenarioMap = byImpl(scenarios.data)
+    return impls.data.map(impl => buildImplResponse(
+      impl, tpMap[impl.id] || [], raidMap[impl.id] || [], true,
+      (accessMap[impl.id] || []).map(a => a.email), noteMap[impl.id] || [], scenarioMap[impl.id] || [],
+    ))
+  } catch (e) { return fail(e) }
 }
 
-export async function addImplementation(token, data) {
-  return post({ action: 'addImplementation', token, data })
+// ---- Writes ----
+
+export async function updateTouchPoint(_token, implementationId, key, status) {
+  const { error } = await supabase.from('touch_points')
+    .upsert({ implementation_id: implementationId, key, status })
+  return error ? fail(error) : { ok: true }
 }
 
-export async function updateImplementationStatus(token, implementationId, status) {
-  return post({ action: 'updateImplementationStatus', token, implementationId, status })
+export async function updateDates(_token, implementationId, dates) {
+  const patch = {}
+  for (const key of IMPL_DATE_KEYS) {
+    if (dates[key] !== undefined) patch[key] = dates[key] === '' ? null : dates[key]
+  }
+  const { error } = await supabase.from('implementations').update(patch).eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
 }
 
-export async function deleteImplementation(token, implementationId) {
-  return post({ action: 'deleteImplementation', token, implementationId })
+export async function addRaidItem(_token, implementationId, item) {
+  const { data, error } = await supabase.from('raid_items').insert({
+    implementation_id: implementationId,
+    type: item.type || 'risk',
+    title: item.title || '',
+    description: item.description || '',
+    status: item.status || 'open',
+    owner: item.owner || '',
+    raised_date: item.raised_date || null,
+  }).select('id').single()
+  return error ? fail(error) : { ok: true, id: data.id }
 }
 
-export async function updateSlackChannel(token, implementationId, slackChannelId) {
-  return post({ action: 'updateSlackChannel', token, implementationId, slackChannelId })
+export async function updateRaidItem(_token, id, fields) {
+  const patch = { ...fields }
+  if (patch.raised_date === '') patch.raised_date = null
+  const { error } = await supabase.from('raid_items').update(patch).eq('id', id)
+  return error ? fail(error) : { ok: true }
 }
 
-export async function addAccess(token, implementationId, email) {
-  return post({ action: 'addAccess', token, implementationId, email })
+export async function deleteRaidItem(_token, id) {
+  const { error } = await supabase.from('raid_items').delete().eq('id', id)
+  return error ? fail(error) : { ok: true }
 }
 
-export async function removeAccess(token, implementationId, email) {
-  return post({ action: 'removeAccess', token, implementationId, email })
+export async function addImplementation(_token, data) {
+  if (!data.client_name) return { error: 'missing_client_name' }
+  const { data: impl, error } = await supabase.from('implementations').insert({
+    partner_name: data.partner_name || '',
+    client_name: data.client_name,
+    slack_channel_id: (data.slackChannelId || '').trim(),
+  }).select('id').single()
+  if (error) return fail(error)
+  const emails = String(data.emails || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+  if (emails.length) {
+    const { error: accessError } = await supabase.from('access')
+      .upsert(emails.map(email => ({ email, implementation_id: impl.id })))
+    if (accessError) return fail(accessError)
+  }
+  return { ok: true, id: impl.id }
 }
+
+export async function updateImplementationStatus(_token, implementationId, status) {
+  const { error } = await supabase.from('implementations').update({ status }).eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function deleteImplementation(_token, implementationId) {
+  const { error } = await supabase.from('implementations').delete().eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function updateSlackChannel(_token, implementationId, slackChannelId) {
+  const { error } = await supabase.from('implementations')
+    .update({ slack_channel_id: (slackChannelId || '').trim() }).eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function addAccess(_token, implementationId, email) {
+  const { error } = await supabase.from('access')
+    .upsert({ email: email.trim().toLowerCase(), implementation_id: implementationId })
+  return error ? fail(error) : { ok: true }
+}
+
+export async function removeAccess(_token, implementationId, email) {
+  const { error } = await supabase.from('access').delete()
+    .eq('implementation_id', implementationId).eq('email', email.trim().toLowerCase())
+  return error ? fail(error) : { ok: true }
+}
+
+export async function addMeetingNote(_token, implementationId, note) {
+  const { data, error } = await supabase.from('meeting_notes').insert({
+    implementation_id: implementationId,
+    title: note.title || '',
+    meeting_date: note.meeting_date || null,
+    content: note.content || '',
+    source: note.source || 'manual',
+    granola_meeting_id: note.granola_meeting_id || '',
+  }).select('id').single()
+  return error ? fail(error) : { ok: true, id: data.id }
+}
+
+export async function deleteMeetingNote(_token, id) {
+  const { error } = await supabase.from('meeting_notes').delete().eq('id', id)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function updateBloomreachOrgLink(_token, implementationId, orgId, orgName) {
+  const { error } = await supabase.from('implementations')
+    .update({ bloomreach_org_id: orgId || '', bloomreach_org_name: orgName || '' })
+    .eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+// ---- Auth (Supabase email magic link, PKCE flow) ----
 
 export async function requestMagicLink(email) {
-  return post({ action: 'requestMagicLink', email })
+  const { error } = await supabase.auth.signInWithOtp({
+    email: email.trim().toLowerCase(),
+    options: { emailRedirectTo: window.location.origin + window.location.pathname },
+  })
+  return error ? fail(error) : { ok: true }
 }
 
-export async function verifyMagicLink(email, magicToken) {
-  return post({ action: 'verifyMagicLink', email, magicToken })
+export async function signOut() {
+  await supabase.auth.signOut()
+}
+
+// Builds the userInfo object App.jsx keeps in state, from a live session.
+export async function loadUserInfo(session) {
+  const info = await getMyImplementations()
+  if (info.error) return { error: info.error, email: session.user.email }
+  return {
+    email: session.user.email,
+    name: session.user.email,
+    isAdmin: info.isAdmin,
+    implementations: info.implementations,
+  }
 }

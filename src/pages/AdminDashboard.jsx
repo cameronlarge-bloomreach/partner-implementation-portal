@@ -108,6 +108,13 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             </p>
           </div>
           <div className="flex gap-3">
+            <Link
+              to="/admin/control-centre"
+              className="no-print text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+            >
+              Control Centre
+            </Link>
             <button
               onClick={() => window.print()}
               className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
