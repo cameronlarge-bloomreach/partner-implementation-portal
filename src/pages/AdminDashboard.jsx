@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getAllImplementations, addImplementation, getPendingSignups, approveSignup,
-  getStepDefinitions, addStepDefinition, updateStepDefinition, deleteStepDefinition,
-  DEFAULT_STEPS,
+  declineSignup, getStepDefinitions, DEFAULT_STEPS,
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
@@ -36,7 +35,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [showCompleted, setShowCompleted] = useState(false)
   const [pending, setPending] = useState([])
   const [steps, setSteps] = useState(DEFAULT_STEPS)
-  const [showSteps, setShowSteps] = useState(false)
   const tpKeys = steps.touchpoints.map(s => s.key)
   const qaKeys = steps.qaSteps.map(s => s.key)
 
@@ -66,6 +64,13 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
         ? { ...impl, accessEmails: [...(impl.accessEmails || []), `${profile.email} (partner-wide)`] }
         : impl))
     }
+    return null
+  }
+
+  async function declinePending(profile) {
+    const res = await declineSignup(profile.id)
+    if (res.error) return res.error
+    setPending(prev => prev.filter(p => p.id !== profile.id))
     return null
   }
 
@@ -130,13 +135,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               Control Centre
             </Link>
             <button
-              onClick={() => setShowSteps(v => !v)}
-              className="no-print text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
-            >
-              Manage steps
-            </button>
-            <button
               onClick={() => window.print()}
               className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
@@ -153,11 +151,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           </div>
         </div>
 
-        {/* Progress step editor */}
-        {showSteps && (
-          <StepsManager steps={steps} onChanged={setSteps} onClose={() => setShowSteps(false)} />
-        )}
-
         {/* Pending sign-ups awaiting approval */}
         {pending.length > 0 && (
           <div className="no-print bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--gold)' }}>
@@ -169,7 +162,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             </p>
             <div className="space-y-3">
               {pending.map(p => (
-                <PendingRow key={p.id} profile={p} implementations={implementations} onApprove={approvePending} />
+                <PendingRow key={p.id} profile={p} implementations={implementations} onApprove={approvePending} onDecline={declinePending} />
               ))}
             </div>
           </div>
@@ -360,7 +353,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   )
 }
 
-function PendingRow({ profile, implementations, onApprove }) {
+function PendingRow({ profile, implementations, onApprove, onDecline }) {
   const [choice, setChoice] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -419,118 +412,21 @@ function PendingRow({ profile, implementations, onApprove }) {
       >
         {busy ? 'Approving…' : 'Approve'}
       </button>
-      {error && <span className="text-xs" style={{ color: 'var(--rust)' }}>{error}</span>}
-    </div>
-  )
-}
-
-function StepsManager({ steps, onChanged, onClose }) {
-  const [error, setError] = useState(null)
-
-  async function refresh() {
-    onChanged(await getStepDefinitions())
-  }
-
-  async function run(promise) {
-    setError(null)
-    const res = await promise
-    if (res.error) setError(res.error)
-    else await refresh()
-  }
-
-  return (
-    <div className="no-print bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--hairline)' }}>
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Progress steps</h2>
-        <button onClick={onClose} className="text-sm" style={{ color: 'var(--muted)' }}>Close</button>
-      </div>
-      <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
-        These define the progress and QA checklists on every implementation. Removing a step hides it everywhere;
-        recorded statuses for removed steps are kept in the database.
-      </p>
-      {error && <div className="text-sm mb-3" style={{ color: 'var(--rust)' }}>{error}</div>}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <StepColumn title="Touch points" category="touchpoint" items={steps.touchpoints} run={run} />
-        <StepColumn title="QA steps" category="qa" items={steps.qaSteps} run={run} />
-      </div>
-    </div>
-  )
-}
-
-function StepColumn({ title, category, items, run }) {
-  const [newLabel, setNewLabel] = useState('')
-  const [editingKey, setEditingKey] = useState(null)
-  const [editLabel, setEditLabel] = useState('')
-
-  function move(idx, dir) {
-    const other = idx + dir
-    if (other < 0 || other >= items.length) return
-    // Swap the two positions server-side.
-    run(Promise.all([
-      updateStepDefinition(items[idx].key, { position: items[other].position }),
-      updateStepDefinition(items[other].key, { position: items[idx].position }),
-    ]).then(rs => rs.find(r => r.error) || { ok: true }))
-  }
-
-  return (
-    <div>
-      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--ink)' }}>{title}</h3>
-      <ul className="space-y-1.5">
-        {items.map((s, idx) => (
-          <li key={s.key} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ border: '1px solid var(--hairline)' }}>
-            {editingKey === s.key ? (
-              <>
-                <input
-                  value={editLabel}
-                  onChange={e => setEditLabel(e.target.value)}
-                  className="flex-1 rounded px-2 py-1 text-sm focus:outline-none"
-                  style={{ border: '1px solid var(--hairline)' }}
-                  autoFocus
-                />
-                <button
-                  className="text-xs font-medium"
-                  style={{ color: 'var(--moss)' }}
-                  onClick={() => { run(updateStepDefinition(s.key, { label: editLabel.trim() })); setEditingKey(null) }}
-                >Save</button>
-                <button className="text-xs" style={{ color: 'var(--muted)' }} onClick={() => setEditingKey(null)}>Cancel</button>
-              </>
-            ) : (
-              <>
-                <span className="flex-1 text-sm" style={{ color: 'var(--ink)' }}>{s.label}</span>
-                <button className="text-xs px-1" style={{ color: 'var(--muted)' }} title="Move up" onClick={() => move(idx, -1)}>↑</button>
-                <button className="text-xs px-1" style={{ color: 'var(--muted)' }} title="Move down" onClick={() => move(idx, 1)}>↓</button>
-                <button
-                  className="text-xs font-medium px-1"
-                  style={{ color: 'var(--arctic)' }}
-                  onClick={() => { setEditingKey(s.key); setEditLabel(s.label) }}
-                >Rename</button>
-                <button
-                  className="text-xs px-1"
-                  style={{ color: 'var(--rust)' }}
-                  onClick={() => { if (confirm(`Remove "${s.label}" from every implementation's checklist?`)) run(deleteStepDefinition(s.key)) }}
-                >Remove</button>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-      <form
-        className="mt-2 flex gap-2"
-        onSubmit={e => { e.preventDefault(); if (newLabel.trim()) { run(addStepDefinition(category, newLabel)); setNewLabel('') } }}
+      <button
+        onClick={async () => {
+          if (!confirm(`Decline ${profile.email}? They keep their account but stay locked out until you approve them later.`)) return
+          setBusy(true)
+          setError(null)
+          const err = await onDecline(profile)
+          if (err) { setError(err); setBusy(false) }
+        }}
+        disabled={busy}
+        className="disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        style={{ border: '1px solid var(--hairline)', color: 'var(--rust)' }}
       >
-        <input
-          value={newLabel}
-          onChange={e => setNewLabel(e.target.value)}
-          placeholder={`New ${category === 'qa' ? 'QA step' : 'touch point'}…`}
-          className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
-          style={{ border: '1px solid var(--hairline)' }}
-        />
-        <button
-          type="submit"
-          className="text-black text-sm font-medium px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
-          style={{ background: 'var(--gold)' }}
-        >Add</button>
-      </form>
+        Decline
+      </button>
+      {error && <span className="text-xs" style={{ color: 'var(--rust)' }}>{error}</span>}
     </div>
   )
 }

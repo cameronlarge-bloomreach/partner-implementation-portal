@@ -4,10 +4,11 @@ import {
   getAllImplementations, updateDates, updateTouchPoint,
   addAccess, removeAccess, updateImplementationStatus,
   deleteImplementation, updateSlackChannel,
-  addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
+  addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions, updatePricingModel,
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
+import StepsManager from '../components/StepsManager'
 import ProgressRing from '../components/ProgressRing'
 
 const DATE_FIELDS = [
@@ -68,11 +69,13 @@ function formatDate(val) {
 }
 
 export default function AdminImplementation({ credential, userInfo, onLogout }) {
+  const { id } = useParams()
   const [stepDefs, setStepDefs] = useState(null)
-  useEffect(() => { getStepDefinitions().then(setStepDefs).catch(() => {}) }, [])
+  const [showSteps, setShowSteps] = useState(false)
+  const [savingPricing, setSavingPricing] = useState(false)
+  useEffect(() => { getStepDefinitions(id).then(setStepDefs).catch(() => {}) }, [id])
   const tpList = stepDefs?.touchpoints || TOUCH_POINTS
   const qaList = stepDefs?.qaSteps || QA_STEPS
-  const { id } = useParams()
   const navigate = useNavigate()
 
   const [implementation, setImplementation] = useState(null)
@@ -366,6 +369,67 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
             </button>
           </form>
         </div>
+
+        {/* Pricing model */}
+        <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
+          <h2 className="text-sm font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--ink)' }}>Pricing model</h2>
+          <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>
+            Which meter this client is billed on. Sets the usage figure the Control Centre leads with.
+          </p>
+          <div className="flex gap-2">
+            {[['profiles', 'Profiles'], ['events', 'Events']].map(([value, label]) => {
+              const active = (implementation.pricingModel || 'profiles') === value
+              return (
+                <button
+                  key={value}
+                  disabled={savingPricing}
+                  onClick={async () => {
+                    setSavingPricing(true)
+                    const res = await updatePricingModel(credential, id, value)
+                    if (!res.error) setImplementation(prev => ({ ...prev, pricingModel: value }))
+                    setSavingPricing(false)
+                  }}
+                  className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                  style={active
+                    ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' }
+                    : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Progress steps for this implementation */}
+        <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Progress steps</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+                {stepDefs?.isCustom
+                  ? 'Custom checklist for this client.'
+                  : 'Using the standard checklist.'}
+                {' '}{tpList.length} touch points · {qaList.length} QA steps
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSteps(v => !v)}
+              className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+            >
+              {showSteps ? 'Done' : 'Edit steps'}
+            </button>
+          </div>
+        </div>
+        {showSteps && stepDefs && (
+          <StepsManager
+            implementationId={id}
+            steps={stepDefs}
+            onChanged={setStepDefs}
+            onClose={() => setShowSteps(false)}
+          />
+        )}
 
         {/* Slack Notifications */}
         <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>

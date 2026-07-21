@@ -294,12 +294,44 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                             {selected.bloomreachOrgName}
                             <span className="font-mono text-xs ml-2" style={{ color: 'var(--muted)' }}>{selected.bloomreachOrgId}</span>
                           </div>
-                          {selected.profileCount !== null && selected.profileCount !== undefined && (
-                            <div className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
-                              <span className="font-mono font-semibold" style={{ color: 'var(--arctic)' }}>{Number(selected.profileCount).toLocaleString()}</span> profiles
-                              {selected.profileCountSyncedAt && <span> · synced {formatDateTime(selected.profileCountSyncedAt)}</span>}
-                            </div>
-                          )}
+                          {(() => {
+                            // Lead with the metric this client is billed on.
+                            const onEvents = selected.pricingModel === 'events'
+                            const primary = onEvents
+                              ? { value: selected.eventCount, unit: 'events', at: selected.eventCountSyncedAt }
+                              : { value: selected.profileCount, unit: 'profiles', at: selected.profileCountSyncedAt }
+                            const secondary = onEvents
+                              ? { value: selected.profileCount, unit: 'profiles' }
+                              : { value: selected.eventCount, unit: 'events' }
+                            const has = v => v !== null && v !== undefined
+                            if (!has(primary.value) && !has(secondary.value)) return null
+                            return (
+                              <div className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
+                                {has(primary.value) && (
+                                  <>
+                                    <span className="font-mono font-semibold" style={{ color: 'var(--arctic)' }}>
+                                      {Number(primary.value).toLocaleString()}
+                                    </span> {primary.unit}
+                                    <span
+                                      className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                                      style={{ background: 'var(--paper)', color: 'var(--muted)' }}
+                                      title="This client's billing meter"
+                                    >billing meter</span>
+                                  </>
+                                )}
+                                {has(secondary.value) && (
+                                  <span> · {Number(secondary.value).toLocaleString()} {secondary.unit}</span>
+                                )}
+                                {primary.at && <span> · synced {formatDateTime(primary.at)}</span>}
+                                <div className="mt-1 italic">
+                                  Indicative usage from Engagement, not the billed figure —
+                                  {onEvents
+                                    ? ' events shown are cumulative stored, not monthly processed.'
+                                    : ' counts all profiles, not just billable ones.'}
+                                </div>
+                              </div>
+                            )
+                          })()}
                         </div>
                       ) : (
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>Not linked yet — ask Claude to match this implementation to its Bloomreach org, or link it manually above.</p>

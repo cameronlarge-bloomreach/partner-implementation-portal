@@ -75,6 +75,11 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRo
     scenarios: isAdmin ? scenarioRows.map(shapeScenario) : [],
     profileCount: isAdmin ? (impl.profile_count ?? null) : undefined,
     profileCountSyncedAt: isAdmin ? (impl.profile_count_synced_at || '') : undefined,
+    // Bloomreach bills either on profiles or on events — the model decides
+    // which usage figure the Control Centre leads with.
+    pricingModel: impl.pricing_model || 'profiles',
+    eventCount: isAdmin ? (impl.event_count ?? null) : undefined,
+    eventCountSyncedAt: isAdmin ? (impl.event_count_synced_at || '') : undefined,
   }
   for (const key of IMPL_DATE_KEYS) resp[key] = impl[key] || ''
   return resp
@@ -273,6 +278,12 @@ export async function deleteMeetingNote(_token, id) {
   return error ? fail(error) : { ok: true }
 }
 
+export async function updatePricingModel(_token, implementationId, pricingModel) {
+  const { error } = await supabase.from('implementations')
+    .update({ pricing_model: pricingModel }).eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
 export async function updateBloomreachOrgLink(_token, implementationId, orgId, orgName) {
   const { error } = await supabase.from('implementations')
     .update({ bloomreach_org_id: orgId || '', bloomreach_org_name: orgName || '' })
@@ -334,38 +345,90 @@ export const DEFAULT_STEPS = {
   ],
 }
 
-export async function getStepDefinitions() {
+// Steps are per-implementation. An implementation with no rows of its own
+// inherits the global template (implementation_id is null); the first edit
+// forks that template into its own copy so other clients are unaffected.
+export async function getStepDefinitions(implementationId = null) {
   try {
-    const { data, error } = await supabase.from('step_definitions')
-      .select('key, label, category, position').order('position')
-    if (error || !data?.length) return DEFAULT_STEPS
-    return {
-      touchpoints: data.filter(s => s.category === 'touchpoint'),
-      qaSteps: data.filter(s => s.category === 'qa'),
+    const shape = (rows, custom) => ({
+      touchpoints: rows.filter(s => s.category === 'touchpoint'),
+      qaSteps: rows.filter(s => s.category === 'qa'),
+      isCustom: custom,
+    })
+    if (implementationId) {
+      const { data: own } = await supabase.from('step_definitions')
+        .select('id, key, label, category, position')
+        .eq('implementation_id', implementationId).order('position')
+      if (own?.length) return shape(own, true)
     }
+    const { data, error } = await supabase.from('step_definitions')
+      .select('id, key, label, category, position')
+      .is('implementation_id', null).order('position')
+    if (error || !data?.length) return { ...DEFAULT_STEPS, isCustom: false }
+    return shape(data, false)
   } catch {
-    return DEFAULT_STEPS
+    return { ...DEFAULT_STEPS, isCustom: false }
   }
 }
 
-export async function addStepDefinition(category, label) {
-  const base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
-  const key = `${category === 'qa' ? 'qa_' : ''}${base}_${Date.now().toString(36)}`
-  const { data: existing } = await supabase.from('step_definitions')
-    .select('position').eq('category', category).order('position', { ascending: false }).limit(1)
-  const position = (existing?.[0]?.position || 0) + 1
-  const { error } = await supabase.from('step_definitions')
-    .insert({ key, label: label.trim(), category, position })
-  return error ? fail(error) : { ok: true, key }
-}
-
-export async function updateStepDefinition(key, fields) {
-  const { error } = await supabase.from('step_definitions').update(fields).eq('key', key)
+// Copies the global template into this implementation so it can be edited
+// without touching every other client. No-op if it already has its own.
+async function forkStepsFor(implementationId) {
+  const { data: own } = await supabase.from('step_definitions')
+    .select('id').eq('implementation_id', implementationId).limit(1)
+  if (own?.length) return { ok: true }
+  const { data: template } = await supabase.from('step_definitions')
+    .select('key, label, category, position').is('implementation_id', null)
+  const rows = (template?.length ? template : [
+    ...DEFAULT_STEPS.touchpoints.map((s, i) => ({ ...s, category: 'touchpoint', position: i + 1 })),
+    ...DEFAULT_STEPS.qaSteps.map((s, i) => ({ ...s, category: 'qa', position: i + 1 })),
+  ]).map(s => ({ ...s, implementation_id: implementationId }))
+  const { error } = await supabase.from('step_definitions').insert(rows)
   return error ? fail(error) : { ok: true }
 }
 
-export async function deleteStepDefinition(key) {
-  const { error } = await supabase.from('step_definitions').delete().eq('key', key)
+export async function addStepDefinition(category, label, implementationId) {
+  if (implementationId) {
+    const forked = await forkStepsFor(implementationId)
+    if (forked.error) return forked
+  }
+  const base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const key = `${category === 'qa' ? 'qa_' : ''}${base}_${Date.now().toString(36)}`
+  const q = supabase.from('step_definitions').select('position').eq('category', category)
+  const { data: existing } = await (implementationId
+    ? q.eq('implementation_id', implementationId)
+    : q.is('implementation_id', null)).order('position', { ascending: false }).limit(1)
+  const position = (existing?.[0]?.position || 0) + 1
+  const { error } = await supabase.from('step_definitions')
+    .insert({ key, label: label.trim(), category, position, implementation_id: implementationId || null })
+  return error ? fail(error) : { ok: true, key }
+}
+
+// `step` is a row from getStepDefinitions (needs id, key) so we can tell an
+// inherited template row from one this implementation already owns.
+export async function updateStepDefinition(step, fields, implementationId) {
+  if (implementationId) {
+    const forked = await forkStepsFor(implementationId)
+    if (forked.error) return forked
+    const { error } = await supabase.from('step_definitions')
+      .update(fields).eq('implementation_id', implementationId).eq('key', step.key)
+    return error ? fail(error) : { ok: true }
+  }
+  const { error } = await supabase.from('step_definitions')
+    .update(fields).is('implementation_id', null).eq('key', step.key)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function deleteStepDefinition(step, implementationId) {
+  if (implementationId) {
+    const forked = await forkStepsFor(implementationId)
+    if (forked.error) return forked
+    const { error } = await supabase.from('step_definitions')
+      .delete().eq('implementation_id', implementationId).eq('key', step.key)
+    return error ? fail(error) : { ok: true }
+  }
+  const { error } = await supabase.from('step_definitions')
+    .delete().is('implementation_id', null).eq('key', step.key)
   return error ? fail(error) : { ok: true }
 }
 
@@ -391,10 +454,19 @@ export async function approveSignup(email, target) {
 // Accounts that exist but have no implementation access and aren't admins —
 // shown on the admin dashboard for approval. Returns [] until the profiles
 // table exists (supabase/pending-signups.sql).
+// Declining marks the profile rather than deleting the auth user — removing
+// a user needs the service role key, which the browser must never hold.
+// A declined person keeps their account but stays on the waiting screen.
+export async function declineSignup(profileId) {
+  const { error } = await supabase.from('profiles')
+    .update({ declined: true, decided_at: new Date().toISOString() }).eq('id', profileId)
+  return error ? fail(error) : { ok: true }
+}
+
 export async function getPendingSignups() {
   try {
     const [profiles, access, admins, partnerGrants] = await Promise.all([
-      supabase.from('profiles').select('id, email, created_at').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('id, email, created_at').eq('declined', false).order('created_at', { ascending: false }),
       supabase.from('access').select('email'),
       supabase.from('admin_emails').select('email'),
       supabase.from('partner_access').select('email'),
