@@ -4,7 +4,7 @@ import {
   getAllImplementations, updateDates, updateTouchPoint,
   addAccess, removeAccess, updateImplementationStatus,
   deleteImplementation, updateSlackChannel,
-  addRaidItem, updateRaidItem, deleteRaidItem,
+  addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
@@ -68,6 +68,10 @@ function formatDate(val) {
 }
 
 export default function AdminImplementation({ credential, userInfo, onLogout }) {
+  const [stepDefs, setStepDefs] = useState(null)
+  useEffect(() => { getStepDefinitions().then(setStepDefs).catch(() => {}) }, [])
+  const tpList = stepDefs?.touchpoints || TOUCH_POINTS
+  const qaList = stepDefs?.qaSteps || QA_STEPS
   const { id } = useParams()
   const navigate = useNavigate()
 
@@ -254,10 +258,10 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const qa = implementation.qaSteps || {}
   const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
 
-  const tpRequired = TOUCH_POINTS.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
-  const tpCompleted = TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length
-  const qaRequired = QA_STEPS.filter(x => (qa[x.key] || 'not_started') !== 'not_required')
-  const qaCompleted = QA_STEPS.filter(x => qa[x.key] === 'complete').length
+  const tpRequired = tpList.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
+  const tpCompleted = tpList.filter(x => tp[x.key] === 'complete').length
+  const qaRequired = qaList.filter(x => (qa[x.key] || 'not_started') !== 'not_required')
+  const qaCompleted = qaList.filter(x => qa[x.key] === 'complete').length
   const tpPct = tpRequired.length === 0 ? 100 : Math.round(tpCompleted / tpRequired.length * 100)
   const qaPct = qaRequired.length === 0 ? 100 : Math.round(qaCompleted / qaRequired.length * 100)
 
@@ -435,7 +439,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
               <RolloutRail total={tpRequired.length} completed={tpCompleted} color="var(--gold)" />
             </div>
             <div className="space-y-0.5">
-              {TOUCH_POINTS.map(item => {
+              {tpList.map(item => {
                 const status = tp[item.key] || 'not_started'
                 const isSaving = savingTP === item.key
                 return (
@@ -475,7 +479,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
               <RolloutRail total={qaRequired.length} completed={qaCompleted} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} />
             </div>
             <div className="space-y-0.5">
-              {QA_STEPS.map((step, i) => {
+              {qaList.map((step, i) => {
                 const status = qa[step.key] || 'not_started'
                 const isSaving = savingTP === step.key
                 const noteExpanded = expandedQANote === step.key

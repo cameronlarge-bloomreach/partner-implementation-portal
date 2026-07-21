@@ -118,25 +118,36 @@ export async function getImplementation(_token, implementationId) {
     const firstError = [impl, tps, raid, access, notes, scenarios].find(r => r.error)
     if (firstError) throw firstError.error
     if (!impl.data) return { error: 'not_found' }
+    const partnerGrants = await supabase.from('partner_access')
+      .select('email').ilike('partner_name', impl.data.partner_name)
+    const emails = [
+      ...access.data.map(a => a.email),
+      ...(partnerGrants.data || []).map(g => `${g.email} (partner-wide)`),
+    ]
     return buildImplResponse(
       impl.data, tps.data, raid.data, isAdmin,
-      access.data.map(a => a.email), notes.data, scenarios.data,
+      emails, notes.data, scenarios.data,
     )
   } catch (e) { return fail(e) }
 }
 
 export async function getAllImplementations() {
   try {
-    const [impls, tps, raid, access, notes, scenarios] = await Promise.all([
+    const [impls, tps, raid, access, notes, scenarios, partnerGrants] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
       supabase.from('raid_items').select('*').order('created_at'),
       supabase.from('access').select('email, implementation_id'),
       supabase.from('meeting_notes').select('*').order('meeting_date', { ascending: false }),
       supabase.from('scenario_sync').select('*').order('name'),
+      supabase.from('partner_access').select('email, partner_name'),
     ])
     const firstError = [impls, tps, raid, access, notes, scenarios].find(r => r.error)
     if (firstError) throw firstError.error
+    const grantsByPartner = {}
+    for (const g of partnerGrants.data || []) {
+      (grantsByPartner[g.partner_name.toLowerCase()] ||= []).push(`${g.email} (partner-wide)`)
+    }
     const byImpl = (rows) => {
       const map = {}
       for (const r of rows) (map[r.implementation_id] ||= []).push(r)
@@ -149,7 +160,11 @@ export async function getAllImplementations() {
     const scenarioMap = byImpl(scenarios.data)
     return impls.data.map(impl => buildImplResponse(
       impl, tpMap[impl.id] || [], raidMap[impl.id] || [], true,
-      (accessMap[impl.id] || []).map(a => a.email), noteMap[impl.id] || [], scenarioMap[impl.id] || [],
+      [
+        ...(accessMap[impl.id] || []).map(a => a.email),
+        ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
+      ],
+      noteMap[impl.id] || [], scenarioMap[impl.id] || [],
     ))
   } catch (e) { return fail(e) }
 }
@@ -295,20 +310,100 @@ export async function updatePassword(password) {
   return error ? fail(error) : { ok: true }
 }
 
+// ---- Progress step definitions ----
+// Falls back to the original hardcoded steps until
+// supabase/partner-access-and-steps.sql has been run.
+
+export const DEFAULT_STEPS = {
+  touchpoints: [
+    { key: 'account_creation', label: 'Account Creation' },
+    { key: 'frontend_data', label: 'Front End Data' },
+    { key: 'backend_data', label: 'Backend Data' },
+    { key: 'integration_sms', label: 'SMS Integration' },
+    { key: 'integration_email', label: 'Email Integration' },
+    { key: 'integration_whatsapp', label: 'WhatsApp Integration' },
+    { key: 'use_cases', label: 'Use Cases' },
+  ],
+  qaSteps: [
+    { key: 'qa_peer_review_1', label: 'ID Validation' },
+    { key: 'qa_peer_review_2', label: 'Back End Tracking' },
+    { key: 'qa_peer_review_3', label: 'Front End Tracking' },
+    { key: 'qa_peer_review_4', label: 'Use Cases Data Check & Debugging' },
+    { key: 'qa_peer_review_5', label: 'Data Mapping' },
+    { key: 'qa_peer_review_6', label: 'Expiration & Data Cleanliness' },
+  ],
+}
+
+export async function getStepDefinitions() {
+  try {
+    const { data, error } = await supabase.from('step_definitions')
+      .select('key, label, category, position').order('position')
+    if (error || !data?.length) return DEFAULT_STEPS
+    return {
+      touchpoints: data.filter(s => s.category === 'touchpoint'),
+      qaSteps: data.filter(s => s.category === 'qa'),
+    }
+  } catch {
+    return DEFAULT_STEPS
+  }
+}
+
+export async function addStepDefinition(category, label) {
+  const base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  const key = `${category === 'qa' ? 'qa_' : ''}${base}_${Date.now().toString(36)}`
+  const { data: existing } = await supabase.from('step_definitions')
+    .select('position').eq('category', category).order('position', { ascending: false }).limit(1)
+  const position = (existing?.[0]?.position || 0) + 1
+  const { error } = await supabase.from('step_definitions')
+    .insert({ key, label: label.trim(), category, position })
+  return error ? fail(error) : { ok: true, key }
+}
+
+export async function updateStepDefinition(key, fields) {
+  const { error } = await supabase.from('step_definitions').update(fields).eq('key', key)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function deleteStepDefinition(key) {
+  const { error } = await supabase.from('step_definitions').delete().eq('key', key)
+  return error ? fail(error) : { ok: true }
+}
+
+// ---- Sign-up approval ----
+
+// target: { type: 'admin' } | { type: 'partner', partnerName } | { type: 'implementation', id }
+export async function approveSignup(email, target) {
+  const clean = email.trim().toLowerCase()
+  if (target.type === 'admin') {
+    const { error } = await supabase.from('admin_emails').insert({ email: clean })
+    return error ? fail(error) : { ok: true }
+  }
+  if (target.type === 'partner') {
+    const { error } = await supabase.from('partner_access')
+      .upsert({ email: clean, partner_name: target.partnerName })
+    return error ? fail(error) : { ok: true }
+  }
+  const { error } = await supabase.from('access')
+    .upsert({ email: clean, implementation_id: target.id })
+  return error ? fail(error) : { ok: true }
+}
+
 // Accounts that exist but have no implementation access and aren't admins —
 // shown on the admin dashboard for approval. Returns [] until the profiles
 // table exists (supabase/pending-signups.sql).
 export async function getPendingSignups() {
   try {
-    const [profiles, access, admins] = await Promise.all([
+    const [profiles, access, admins, partnerGrants] = await Promise.all([
       supabase.from('profiles').select('id, email, created_at').order('created_at', { ascending: false }),
       supabase.from('access').select('email'),
       supabase.from('admin_emails').select('email'),
+      supabase.from('partner_access').select('email'),
     ])
     if (profiles.error) return []
     const known = new Set([
       ...(access.data || []).map(a => a.email),
       ...(admins.data || []).map(a => a.email),
+      ...(partnerGrants.data || []).map(a => a.email),
     ])
     return profiles.data.filter(p => !known.has(p.email))
   } catch {

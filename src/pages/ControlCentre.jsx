@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllImplementations, addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink } from '../api'
+import { getAllImplementations, addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, getStepDefinitions } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 import ProgressRing from '../components/ProgressRing'
@@ -43,6 +43,10 @@ function pct(stepMap, keys) {
 const EMPTY_NOTE = { title: '', meeting_date: new Date().toISOString().slice(0, 10), content: '' }
 
 export default function ControlCentre({ credential, userInfo, onLogout }) {
+  const [stepDefs, setStepDefs] = useState(null)
+  useEffect(() => { getStepDefinitions().then(setStepDefs).catch(() => {}) }, [])
+  const tpKeys = stepDefs ? stepDefs.touchpoints.map(s_ => s_.key) : TP_KEYS
+  const qaKeys = stepDefs ? stepDefs.qaSteps.map(s_ => s_.key) : QA_KEYS
   const [implementations, setImplementations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -167,8 +171,8 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                 {filtered.length === 0 ? (
                   <div className="p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>No matches.</div>
                 ) : filtered.map(impl => {
-                  const tpDone = TP_KEYS.filter(k => (impl.touchPoints || {})[k] === 'complete').length
-                  const progress = pct(impl.touchPoints || {}, TP_KEYS)
+                  const tpDone = tpKeys.filter(k => (impl.touchPoints || {})[k] === 'complete').length
+                  const progress = pct(impl.touchPoints || {}, tpKeys)
                   const isSelected = impl.id === selectedId
                   return (
                     <button
@@ -189,7 +193,7 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                       </div>
                       <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{impl.partner_name}</div>
                       <div className="flex items-center gap-2 mt-2">
-                        <RolloutRail total={TP_KEYS.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
+                        <RolloutRail total={tpKeys.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
                         <span className="font-mono text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>{progress}%</span>
                       </div>
                     </button>
@@ -205,8 +209,8 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                   Select an implementation.
                 </div>
               ) : (() => {
-                const tpPct = pct(selected.touchPoints || {}, TP_KEYS)
-                const qaPct = pct(selected.qaSteps || {}, QA_KEYS)
+                const tpPct = pct(selected.touchPoints || {}, tpKeys)
+                const qaPct = pct(selected.qaSteps || {}, qaKeys)
                 const openRaid = (selected.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
                 const notes = selected.meetingNotes || []
 

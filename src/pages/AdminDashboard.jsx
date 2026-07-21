@@ -1,35 +1,25 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllImplementations, addImplementation, getPendingSignups, addAccess } from '../api'
+import {
+  getAllImplementations, addImplementation, getPendingSignups, approveSignup,
+  getStepDefinitions, addStepDefinition, updateStepDefinition, deleteStepDefinition,
+  DEFAULT_STEPS,
+} from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 
-const TP_KEYS = [
-  'account_creation', 'frontend_data', 'backend_data',
-  'integration_sms', 'integration_email', 'integration_whatsapp', 'use_cases'
-]
-
-const QA_KEYS = [
-  'qa_peer_review_1', 'qa_peer_review_2', 'qa_peer_review_3',
-  'qa_peer_review_4', 'qa_peer_review_5', 'qa_peer_review_6'
-]
-
-function formatDate(val) {
-  if (!val) return '—'
-  const d = new Date(val)
-  return isNaN(d) ? val : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function getProgress(impl) {
+function getProgress(impl, tpKeys) {
+  if (!tpKeys.length) return 0
   const tp = impl.touchPoints || {}
-  const complete = TP_KEYS.filter(k => tp[k] === 'complete').length
-  return Math.round((complete / TP_KEYS.length) * 100)
+  const complete = tpKeys.filter(k => tp[k] === 'complete').length
+  return Math.round((complete / tpKeys.length) * 100)
 }
 
-function getQAProgress(impl) {
+function getQAProgress(impl, qaKeys) {
+  if (!qaKeys.length) return 0
   const qa = impl.qaSteps || {}
-  const complete = QA_KEYS.filter(k => qa[k] === 'complete').length
-  return Math.round((complete / QA_KEYS.length) * 100)
+  const complete = qaKeys.filter(k => qa[k] === 'complete').length
+  return Math.round((complete / qaKeys.length) * 100)
 }
 
 const EMPTY_FORM = { emails: '', partner_name: '', client_name: '', slackChannelId: '' }
@@ -45,6 +35,10 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [partnerFilter, setPartnerFilter] = useState('All')
   const [showCompleted, setShowCompleted] = useState(false)
   const [pending, setPending] = useState([])
+  const [steps, setSteps] = useState(DEFAULT_STEPS)
+  const [showSteps, setShowSteps] = useState(false)
+  const tpKeys = steps.touchpoints.map(s => s.key)
+  const qaKeys = steps.qaSteps.map(s => s.key)
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -55,15 +49,23 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
       .catch(() => setError('Failed to load implementations.'))
       .finally(() => setLoading(false))
     getPendingSignups().then(setPending).catch(() => {})
+    getStepDefinitions().then(setSteps).catch(() => {})
   }, [])
 
-  async function approvePending(profile, implementationId) {
-    const res = await addAccess(credential, implementationId, profile.email)
+  async function approvePending(profile, target) {
+    const res = await approveSignup(profile.email, target)
     if (res.error) return res.error
     setPending(prev => prev.filter(p => p.id !== profile.id))
-    setImplementations(prev => prev.map(impl => impl.id === implementationId
-      ? { ...impl, accessEmails: [...(impl.accessEmails || []), profile.email] }
-      : impl))
+    if (target.type === 'implementation') {
+      setImplementations(prev => prev.map(impl => impl.id === target.id
+        ? { ...impl, accessEmails: [...(impl.accessEmails || []), profile.email] }
+        : impl))
+    }
+    if (target.type === 'partner') {
+      setImplementations(prev => prev.map(impl => impl.partner_name === target.partnerName
+        ? { ...impl, accessEmails: [...(impl.accessEmails || []), `${profile.email} (partner-wide)`] }
+        : impl))
+    }
     return null
   }
 
@@ -128,6 +130,13 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               Control Centre
             </Link>
             <button
+              onClick={() => setShowSteps(v => !v)}
+              className="no-print text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+            >
+              Manage steps
+            </button>
+            <button
               onClick={() => window.print()}
               className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
@@ -143,6 +152,11 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             </button>
           </div>
         </div>
+
+        {/* Progress step editor */}
+        {showSteps && (
+          <StepsManager steps={steps} onChanged={setSteps} onClose={() => setShowSteps(false)} />
+        )}
 
         {/* Pending sign-ups awaiting approval */}
         {pending.length > 0 && (
@@ -166,10 +180,10 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           const activeImpls = implementations.filter(i => i.status !== 'complete')
           const completeCount = implementations.length - activeImpls.length
           const avgProgress = activeImpls.length
-            ? Math.round(activeImpls.reduce((sum, i) => sum + getProgress(i), 0) / activeImpls.length)
+            ? Math.round(activeImpls.reduce((sum, i) => sum + getProgress(i, tpKeys), 0) / activeImpls.length)
             : 0
           const avgQA = activeImpls.length
-            ? Math.round(activeImpls.reduce((sum, i) => sum + getQAProgress(i), 0) / activeImpls.length)
+            ? Math.round(activeImpls.reduce((sum, i) => sum + getQAProgress(i, qaKeys), 0) / activeImpls.length)
             : 0
           const totalOpenRaid = implementations.reduce(
             (sum, i) => sum + (i.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length, 0
@@ -318,7 +332,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 No active implementations{partnerFilter !== 'All' ? ` for ${partnerFilter}` : ''}.
               </div>
             ) : (
-              <ImplTable items={filtered} />
+              <ImplTable items={filtered} tpKeys={tpKeys} qaKeys={qaKeys} />
             )}
 
             {/* Completed — collapsed by default */}
@@ -334,7 +348,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 </button>
                 {showCompleted && (
                   <div className="mt-3">
-                    <ImplTable items={completedImpls} />
+                    <ImplTable items={completedImpls} tpKeys={tpKeys} qaKeys={qaKeys} />
                   </div>
                 )}
               </div>
@@ -347,17 +361,23 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 }
 
 function PendingRow({ profile, implementations, onApprove }) {
-  const [implId, setImplId] = useState('')
+  const [choice, setChoice] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const sorted = [...implementations].sort((a, b) =>
     (a.partner_name + a.client_name).localeCompare(b.partner_name + b.client_name))
+  const partners = Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()
 
   async function approve() {
-    if (!implId) { setError('Choose an engagement first.'); return }
+    if (!choice) { setError('Choose what to grant first.'); return }
     setBusy(true)
     setError(null)
-    const err = await onApprove(profile, implId)
+    const target = choice === 'admin'
+      ? { type: 'admin' }
+      : choice.startsWith('partner:')
+      ? { type: 'partner', partnerName: choice.slice(8) }
+      : { type: 'implementation', id: choice.slice(5) }
+    const err = await onApprove(profile, target)
     if (err) { setError(err); setBusy(false) }
   }
 
@@ -370,16 +390,26 @@ function PendingRow({ profile, implementations, onApprove }) {
         </div>
       </div>
       <select
-        value={implId}
-        onChange={e => setImplId(e.target.value)}
+        value={choice}
+        onChange={e => setChoice(e.target.value)}
         className="rounded-lg px-3 py-2 text-sm focus:outline-none"
         style={{ border: '1px solid var(--hairline)', color: 'var(--ink)', background: '#fff' }}
-        aria-label={`Assign ${profile.email} to an engagement`}
+        aria-label={`Grant access for ${profile.email}`}
       >
-        <option value="">Assign to engagement…</option>
-        {sorted.map(i => (
-          <option key={i.id} value={i.id}>{i.partner_name} × {i.client_name}</option>
-        ))}
+        <option value="">Grant access to…</option>
+        <optgroup label="Partner — all their implementations, now and future">
+          {partners.map(p => (
+            <option key={p} value={`partner:${p}`}>{p} (all implementations)</option>
+          ))}
+        </optgroup>
+        <optgroup label="Single implementation">
+          {sorted.map(i => (
+            <option key={i.id} value={`impl:${i.id}`}>{i.partner_name} × {i.client_name}</option>
+          ))}
+        </optgroup>
+        <optgroup label="Bloomreach">
+          <option value="admin">Make admin — full access to everything</option>
+        </optgroup>
       </select>
       <button
         onClick={approve}
@@ -394,7 +424,118 @@ function PendingRow({ profile, implementations, onApprove }) {
   )
 }
 
-function ImplTable({ items }) {
+function StepsManager({ steps, onChanged, onClose }) {
+  const [error, setError] = useState(null)
+
+  async function refresh() {
+    onChanged(await getStepDefinitions())
+  }
+
+  async function run(promise) {
+    setError(null)
+    const res = await promise
+    if (res.error) setError(res.error)
+    else await refresh()
+  }
+
+  return (
+    <div className="no-print bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--hairline)' }}>
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Progress steps</h2>
+        <button onClick={onClose} className="text-sm" style={{ color: 'var(--muted)' }}>Close</button>
+      </div>
+      <p className="text-xs mb-4" style={{ color: 'var(--muted)' }}>
+        These define the progress and QA checklists on every implementation. Removing a step hides it everywhere;
+        recorded statuses for removed steps are kept in the database.
+      </p>
+      {error && <div className="text-sm mb-3" style={{ color: 'var(--rust)' }}>{error}</div>}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <StepColumn title="Touch points" category="touchpoint" items={steps.touchpoints} run={run} />
+        <StepColumn title="QA steps" category="qa" items={steps.qaSteps} run={run} />
+      </div>
+    </div>
+  )
+}
+
+function StepColumn({ title, category, items, run }) {
+  const [newLabel, setNewLabel] = useState('')
+  const [editingKey, setEditingKey] = useState(null)
+  const [editLabel, setEditLabel] = useState('')
+
+  function move(idx, dir) {
+    const other = idx + dir
+    if (other < 0 || other >= items.length) return
+    // Swap the two positions server-side.
+    run(Promise.all([
+      updateStepDefinition(items[idx].key, { position: items[other].position }),
+      updateStepDefinition(items[other].key, { position: items[idx].position }),
+    ]).then(rs => rs.find(r => r.error) || { ok: true }))
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold mb-2" style={{ color: 'var(--ink)' }}>{title}</h3>
+      <ul className="space-y-1.5">
+        {items.map((s, idx) => (
+          <li key={s.key} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ border: '1px solid var(--hairline)' }}>
+            {editingKey === s.key ? (
+              <>
+                <input
+                  value={editLabel}
+                  onChange={e => setEditLabel(e.target.value)}
+                  className="flex-1 rounded px-2 py-1 text-sm focus:outline-none"
+                  style={{ border: '1px solid var(--hairline)' }}
+                  autoFocus
+                />
+                <button
+                  className="text-xs font-medium"
+                  style={{ color: 'var(--moss)' }}
+                  onClick={() => { run(updateStepDefinition(s.key, { label: editLabel.trim() })); setEditingKey(null) }}
+                >Save</button>
+                <button className="text-xs" style={{ color: 'var(--muted)' }} onClick={() => setEditingKey(null)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                <span className="flex-1 text-sm" style={{ color: 'var(--ink)' }}>{s.label}</span>
+                <button className="text-xs px-1" style={{ color: 'var(--muted)' }} title="Move up" onClick={() => move(idx, -1)}>↑</button>
+                <button className="text-xs px-1" style={{ color: 'var(--muted)' }} title="Move down" onClick={() => move(idx, 1)}>↓</button>
+                <button
+                  className="text-xs font-medium px-1"
+                  style={{ color: 'var(--arctic)' }}
+                  onClick={() => { setEditingKey(s.key); setEditLabel(s.label) }}
+                >Rename</button>
+                <button
+                  className="text-xs px-1"
+                  style={{ color: 'var(--rust)' }}
+                  onClick={() => { if (confirm(`Remove "${s.label}" from every implementation's checklist?`)) run(deleteStepDefinition(s.key)) }}
+                >Remove</button>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      <form
+        className="mt-2 flex gap-2"
+        onSubmit={e => { e.preventDefault(); if (newLabel.trim()) { run(addStepDefinition(category, newLabel)); setNewLabel('') } }}
+      >
+        <input
+          value={newLabel}
+          onChange={e => setNewLabel(e.target.value)}
+          placeholder={`New ${category === 'qa' ? 'QA step' : 'touch point'}…`}
+          className="flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none"
+          style={{ border: '1px solid var(--hairline)' }}
+        />
+        <button
+          type="submit"
+          className="text-black text-sm font-medium px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
+          style={{ background: 'var(--gold)' }}
+        >Add</button>
+      </form>
+    </div>
+  )
+}
+
+function ImplTable({ items, tpKeys, qaKeys }) {
   return (
     <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid var(--hairline)' }}>
       <table className="w-full text-sm">
@@ -408,10 +549,10 @@ function ImplTable({ items }) {
         </thead>
         <tbody className="divide-y" style={{ borderColor: 'var(--paper)' }}>
           {items.map(impl => {
-            const tpDone = TP_KEYS.filter(k => (impl.touchPoints || {})[k] === 'complete').length
-            const qaDone = QA_KEYS.filter(k => (impl.qaSteps || {})[k] === 'complete').length
-            const progress = getProgress(impl)
-            const qa = getQAProgress(impl)
+            const tpDone = tpKeys.filter(k => (impl.touchPoints || {})[k] === 'complete').length
+            const qaDone = qaKeys.filter(k => (impl.qaSteps || {})[k] === 'complete').length
+            const progress = getProgress(impl, tpKeys)
+            const qa = getQAProgress(impl, qaKeys)
             const openRaid = (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
             return (
               <tr key={impl.id} className="hover:bg-[var(--paper)] transition-colors">
@@ -432,14 +573,14 @@ function ImplTable({ items }) {
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-2 w-28">
-                    <RolloutRail total={TP_KEYS.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
+                    <RolloutRail total={tpKeys.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
                     <span className="font-mono text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>{progress}%</span>
                   </div>
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex items-center gap-2 w-28">
-                    <RolloutRail total={QA_KEYS.length} completed={qaDone} color={qa === 100 ? 'var(--moss)' : 'var(--arctic)'} size="sm" />
-                    <span className="font-mono text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>{qaDone}/{QA_KEYS.length}</span>
+                    <RolloutRail total={qaKeys.length} completed={qaDone} color={qa === 100 ? 'var(--moss)' : 'var(--arctic)'} size="sm" />
+                    <span className="font-mono text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>{qaDone}/{qaKeys.length}</span>
                   </div>
                 </td>
                 <td className="no-print px-5 py-4 text-right">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem, addAccess } from '../api'
+import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem, addAccess, getStepDefinitions } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 
@@ -96,6 +96,10 @@ function StatusSelect({ value, onChange, disabled, saving }) {
 }
 
 export default function PartnerDashboard({ credential, userInfo, onLogout }) {
+  const [stepDefs, setStepDefs] = useState(null)
+  useEffect(() => { getStepDefinitions().then(setStepDefs).catch(() => {}) }, [])
+  const tpList = stepDefs?.touchpoints || TOUCH_POINTS
+  const qaList = stepDefs?.qaSteps || QA_STEPS
   const { id } = useParams()
   const [impl, setImpl] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -228,10 +232,10 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
   const tp = impl?.touchPoints || {}
   const qa = impl?.qaSteps || {}
 
-  const tpRequired = TOUCH_POINTS.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
-  const tpCompleted = TOUCH_POINTS.filter(x => tp[x.key] === 'complete').length
-  const qaRequired = QA_STEPS.filter(x => (qa[x.key] || 'not_started') !== 'not_required')
-  const qaCompleted = QA_STEPS.filter(x => qa[x.key] === 'complete').length
+  const tpRequired = tpList.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
+  const tpCompleted = tpList.filter(x => tp[x.key] === 'complete').length
+  const qaRequired = qaList.filter(x => (qa[x.key] || 'not_started') !== 'not_required')
+  const qaCompleted = qaList.filter(x => qa[x.key] === 'complete').length
   const tpPct = tpRequired.length === 0 ? 100 : Math.round(tpCompleted / tpRequired.length * 100)
   const qaPct = qaRequired.length === 0 ? 100 : Math.round(qaCompleted / qaRequired.length * 100)
   const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
@@ -343,7 +347,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
               <RolloutRail total={tpRequired.length} completed={tpCompleted} color="var(--gold)" />
             </div>
             <div className="space-y-0.5">
-              {TOUCH_POINTS.map(tp_ => {
+              {tpList.map(tp_ => {
                 const status = tp[tp_.key] || 'not_started'
                 return (
                   <div key={tp_.key} className="flex items-center justify-between py-2.5 border-b last:border-0 group" style={{ borderColor: 'var(--paper)' }}>
@@ -377,7 +381,7 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
               <RolloutRail total={qaRequired.length} completed={qaCompleted} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} />
             </div>
             <div className="space-y-0.5">
-              {QA_STEPS.map((step, i) => {
+              {qaList.map((step, i) => {
                 const status = qa[step.key] || 'not_started'
                 const noteExpanded = expandedQANote === step.key
                 const currentNote = qaNoteText[step.key] || ''
