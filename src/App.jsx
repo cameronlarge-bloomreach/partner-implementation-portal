@@ -62,8 +62,9 @@ export default function App() {
     return (
       <CenteredMessage>
         <p className="mb-4">
-          <strong>{userInfo.email}</strong> isn’t registered on any implementation.
-          Please contact your Bloomreach representative.
+          Your account (<strong>{userInfo.email}</strong>) is created and waiting for approval.
+          Once your Bloomreach contact assigns you to an implementation, it will appear here —
+          refresh this page after they confirm.
         </p>
         <button onClick={handleLogout} className="font-medium underline" style={{ color: 'var(--ink)' }}>
           Sign out
