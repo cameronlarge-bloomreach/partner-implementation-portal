@@ -295,6 +295,27 @@ export async function updatePassword(password) {
   return error ? fail(error) : { ok: true }
 }
 
+// Accounts that exist but have no implementation access and aren't admins —
+// shown on the admin dashboard for approval. Returns [] until the profiles
+// table exists (supabase/pending-signups.sql).
+export async function getPendingSignups() {
+  try {
+    const [profiles, access, admins] = await Promise.all([
+      supabase.from('profiles').select('id, email, created_at').order('created_at', { ascending: false }),
+      supabase.from('access').select('email'),
+      supabase.from('admin_emails').select('email'),
+    ])
+    if (profiles.error) return []
+    const known = new Set([
+      ...(access.data || []).map(a => a.email),
+      ...(admins.data || []).map(a => a.email),
+    ])
+    return profiles.data.filter(p => !known.has(p.email))
+  } catch {
+    return []
+  }
+}
+
 export async function signUp(email, password) {
   const { data, error } = await supabase.auth.signUp({
     email: email.trim().toLowerCase(),

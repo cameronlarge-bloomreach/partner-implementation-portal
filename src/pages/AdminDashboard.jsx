@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllImplementations, addImplementation } from '../api'
+import { getAllImplementations, addImplementation, getPendingSignups, addAccess } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 
@@ -44,6 +44,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [addError, setAddError] = useState(null)
   const [partnerFilter, setPartnerFilter] = useState('All')
   const [showCompleted, setShowCompleted] = useState(false)
+  const [pending, setPending] = useState([])
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -53,7 +54,18 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
       })
       .catch(() => setError('Failed to load implementations.'))
       .finally(() => setLoading(false))
+    getPendingSignups().then(setPending).catch(() => {})
   }, [])
+
+  async function approvePending(profile, implementationId) {
+    const res = await addAccess(credential, implementationId, profile.email)
+    if (res.error) return res.error
+    setPending(prev => prev.filter(p => p.id !== profile.id))
+    setImplementations(prev => prev.map(impl => impl.id === implementationId
+      ? { ...impl, accessEmails: [...(impl.accessEmails || []), profile.email] }
+      : impl))
+    return null
+  }
 
   async function handleAdd(e) {
     e.preventDefault()
@@ -131,6 +143,23 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             </button>
           </div>
         </div>
+
+        {/* Pending sign-ups awaiting approval */}
+        {pending.length > 0 && (
+          <div className="no-print bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--gold)' }}>
+            <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>
+              Pending sign-ups <span className="font-mono text-sm" style={{ color: 'var(--muted)' }}>({pending.length})</span>
+            </h2>
+            <p className="text-xs mt-0.5 mb-4" style={{ color: 'var(--muted)' }}>
+              These people created an account but can't see anything yet. Assign them to an engagement to let them in.
+            </p>
+            <div className="space-y-3">
+              {pending.map(p => (
+                <PendingRow key={p.id} profile={p} implementations={implementations} onApprove={approvePending} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Summary stats */}
         {!loading && !error && implementations.length > 0 && (() => {
@@ -313,6 +342,54 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           </>
         )})()}
       </div>
+    </div>
+  )
+}
+
+function PendingRow({ profile, implementations, onApprove }) {
+  const [implId, setImplId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const sorted = [...implementations].sort((a, b) =>
+    (a.partner_name + a.client_name).localeCompare(b.partner_name + b.client_name))
+
+  async function approve() {
+    if (!implId) { setError('Choose an engagement first.'); return }
+    setBusy(true)
+    setError(null)
+    const err = await onApprove(profile, implId)
+    if (err) { setError(err); setBusy(false) }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="min-w-48">
+        <div className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{profile.email}</div>
+        <div className="text-xs" style={{ color: 'var(--muted)' }}>
+          signed up {new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+        </div>
+      </div>
+      <select
+        value={implId}
+        onChange={e => setImplId(e.target.value)}
+        className="rounded-lg px-3 py-2 text-sm focus:outline-none"
+        style={{ border: '1px solid var(--hairline)', color: 'var(--ink)', background: '#fff' }}
+        aria-label={`Assign ${profile.email} to an engagement`}
+      >
+        <option value="">Assign to engagement…</option>
+        {sorted.map(i => (
+          <option key={i.id} value={i.id}>{i.partner_name} × {i.client_name}</option>
+        ))}
+      </select>
+      <button
+        onClick={approve}
+        disabled={busy}
+        className="disabled:opacity-50 text-black text-sm font-medium px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
+        style={{ background: 'var(--gold)' }}
+      >
+        {busy ? 'Approving…' : 'Approve'}
+      </button>
+      {error && <span className="text-xs" style={{ color: 'var(--rust)' }}>{error}</span>}
     </div>
   )
 }
