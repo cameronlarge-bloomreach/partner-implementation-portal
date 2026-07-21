@@ -295,8 +295,25 @@ export async function updatePassword(password) {
   return error ? fail(error) : { ok: true }
 }
 
+export async function signUp(email, password) {
+  const { data, error } = await supabase.auth.signUp({
+    email: email.trim().toLowerCase(),
+    password,
+    options: { emailRedirectTo: window.location.origin + window.location.pathname },
+  })
+  if (error) return fail(error)
+  // Supabase returns an obfuscated existing user (no identities) rather than
+  // an error when the email is already registered.
+  if (data.user && data.user.identities && data.user.identities.length === 0) {
+    return { error: 'An account with this email already exists. Sign in instead, or use “Forgot password?”.' }
+  }
+  return { ok: true, needsConfirmation: !data.session }
+}
+
 export async function signOut() {
-  await supabase.auth.signOut()
+  // scope: 'local' ends only this device's session — signing out on one
+  // device no longer logs the user out everywhere.
+  await supabase.auth.signOut({ scope: 'local' })
 }
 
 // Builds the userInfo object App.jsx keeps in state, from a live session.

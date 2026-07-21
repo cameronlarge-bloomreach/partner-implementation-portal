@@ -1,14 +1,29 @@
 import { useState } from 'react'
-import { requestMagicLink, signInWithPassword, requestPasswordReset } from '../api'
+import { requestMagicLink, signInWithPassword, requestPasswordReset, signUp } from '../api'
 import bloomreachLogo from '../assets/bloomreach-logo.png'
 
+const SUBTITLES = {
+  password: 'Enter your email and password',
+  link: 'Enter your email and we’ll send you a sign-in link',
+  signup: 'Create an account with your work email',
+}
+
 export default function Login() {
-  const [mode, setMode] = useState('password') // 'password' | 'link'
+  const [mode, setMode] = useState('password') // 'password' | 'link' | 'signup'
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
+
+  function switchMode(next) {
+    setMode(next)
+    setError(null)
+    setNotice(null)
+    setPassword('')
+    setConfirm('')
+  }
 
   async function submit(e) {
     e.preventDefault()
@@ -24,6 +39,13 @@ export default function Login() {
             : res.error)
         }
         // On success the auth listener in App.jsx takes over.
+      } else if (mode === 'signup') {
+        if (password.length < 8) { setError('Password must be at least 8 characters.'); setLoading(false); return }
+        if (password !== confirm) { setError('Passwords don’t match.'); setLoading(false); return }
+        const res = await signUp(email, password)
+        if (res.error) setError(res.error)
+        else if (res.needsConfirmation) setNotice(`Almost there — we sent a confirmation link to ${email}. Open it, then sign in with your new password.`)
+        // If confirmation is disabled the auth listener signs them straight in.
       } else {
         const res = await requestMagicLink(email)
         if (res.error) setError(res.error)
@@ -57,10 +79,10 @@ export default function Login() {
           {/* Mobile logo */}
           <img src={bloomreachLogo} alt="Bloomreach" className="h-10 mx-auto mb-8 lg:hidden" />
 
-          <h1 className="font-display text-3xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>Sign in</h1>
-          <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>
-            {mode === 'password' ? 'Enter your email and password' : 'Enter your email and we’ll send you a sign-in link'}
-          </p>
+          <h1 className="font-display text-3xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>
+            {mode === 'signup' ? 'Create account' : 'Sign in'}
+          </h1>
+          <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>{SUBTITLES[mode]}</p>
 
           {error && (
             <div className="text-sm rounded-lg px-4 py-3 mb-6 text-left" style={{ background: 'var(--rust-bg)', border: '1px solid var(--rust)', color: 'var(--rust)' }}>
@@ -83,13 +105,24 @@ export default function Login() {
                 className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                 style={{ border: '1px solid var(--hairline)' }}
               />
-              {mode === 'password' && (
+              {mode !== 'link' && (
                 <input
                   type="password"
                   required
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="Password"
+                  placeholder={mode === 'signup' ? 'Choose a password (min 8 characters)' : 'Password'}
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                  style={{ border: '1px solid var(--hairline)' }}
+                />
+              )}
+              {mode === 'signup' && (
+                <input
+                  type="password"
+                  required
+                  value={confirm}
+                  onChange={e => setConfirm(e.target.value)}
+                  placeholder="Repeat password"
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ border: '1px solid var(--hairline)' }}
                 />
@@ -100,26 +133,44 @@ export default function Login() {
                 className="w-full disabled:opacity-50 text-sm font-medium py-2.5 rounded-lg transition-colors"
                 style={{ background: 'var(--ink)', color: '#fff' }}
               >
-                {loading ? 'Signing in…' : mode === 'password' ? 'Sign in' : 'Email me a sign-in link'}
+                {loading ? 'Working…' : mode === 'password' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Email me a sign-in link'}
               </button>
             </form>
           )}
 
           <div className="mt-6 space-y-2 text-sm">
-            <button
-              type="button"
-              className="font-medium underline"
-              style={{ color: 'var(--ink)' }}
-              onClick={() => { setMode(mode === 'password' ? 'link' : 'password'); setError(null); setNotice(null) }}
-            >
-              {mode === 'password' ? 'Email me a sign-in link instead' : 'Use a password instead'}
-            </button>
-            {mode === 'password' && !notice && (
-              <div>
-                <button type="button" className="underline" style={{ color: 'var(--muted)' }} onClick={forgotPassword}>
-                  Forgot password?
+            {mode !== 'signup' ? (
+              <>
+                <button
+                  type="button"
+                  className="font-medium underline"
+                  style={{ color: 'var(--ink)' }}
+                  onClick={() => switchMode(mode === 'password' ? 'link' : 'password')}
+                >
+                  {mode === 'password' ? 'Email me a sign-in link instead' : 'Use a password instead'}
                 </button>
-              </div>
+                {mode === 'password' && !notice && (
+                  <div>
+                    <button type="button" className="underline" style={{ color: 'var(--muted)' }} onClick={forgotPassword}>
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+                <div>
+                  <button type="button" className="underline" style={{ color: 'var(--muted)' }} onClick={() => switchMode('signup')}>
+                    New here? Create an account
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="font-medium underline"
+                style={{ color: 'var(--ink)' }}
+                onClick={() => switchMode('password')}
+              >
+                Already have an account? Sign in
+              </button>
             )}
           </div>
         </div>
