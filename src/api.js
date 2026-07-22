@@ -80,6 +80,8 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRo
     pricingModel: impl.pricing_model || 'profiles',
     eventCount: isAdmin ? (impl.event_count ?? null) : undefined,
     eventCountSyncedAt: isAdmin ? (impl.event_count_synced_at || '') : undefined,
+    profileLimit: isAdmin ? (impl.profile_limit ?? null) : undefined,
+    eventLimit: isAdmin ? (impl.event_limit ?? null) : undefined,
   }
   for (const key of IMPL_DATE_KEYS) resp[key] = impl[key] || ''
   return resp
@@ -281,6 +283,14 @@ export async function deleteMeetingNote(_token, id) {
 export async function updatePricingModel(_token, implementationId, pricingModel) {
   const { error } = await supabase.from('implementations')
     .update({ pricing_model: pricingModel }).eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+// field is 'profile_limit' or 'event_limit'; value is a number or null to clear.
+export async function updateUsageLimit(_token, implementationId, field, value) {
+  if (!['profile_limit', 'event_limit'].includes(field)) return { error: 'Invalid limit field' }
+  const { error } = await supabase.from('implementations')
+    .update({ [field]: value }).eq('id', implementationId)
   return error ? fail(error) : { ok: true }
 }
 

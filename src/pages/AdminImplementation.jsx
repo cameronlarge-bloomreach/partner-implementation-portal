@@ -4,7 +4,7 @@ import {
   getAllImplementations, updateDates, updateTouchPoint,
   addAccess, removeAccess, updateImplementationStatus,
   deleteImplementation, updateSlackChannel,
-  addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions, updatePricingModel,
+  addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions, updatePricingModel, updateUsageLimit,
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
@@ -73,6 +73,8 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [stepDefs, setStepDefs] = useState(null)
   const [showSteps, setShowSteps] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
+  const [limitDraft, setLimitDraft] = useState('')
+  const [savingLimit, setSavingLimit] = useState(false)
   useEffect(() => { getStepDefinitions(id).then(setStepDefs).catch(() => {}) }, [id])
   const tpList = stepDefs?.touchpoints || TOUCH_POINTS
   const qaList = stepDefs?.qaSteps || QA_STEPS
@@ -110,6 +112,8 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
       const impl = (Array.isArray(data) ? data : []).find(i => i.id === id)
       if (impl) {
         setImplementation(impl)
+        const model = impl.pricingModel || 'profiles'
+        setLimitDraft((model === 'events' ? impl.eventLimit : impl.profileLimit) ?? '')
         const d = {}
         DATE_FIELDS.forEach(f => { d[f.key] = impl[f.key] || '' })
         setDates(d)
@@ -386,7 +390,10 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
                   onClick={async () => {
                     setSavingPricing(true)
                     const res = await updatePricingModel(credential, id, value)
-                    if (!res.error) setImplementation(prev => ({ ...prev, pricingModel: value }))
+                    if (!res.error) {
+                      setImplementation(prev => ({ ...prev, pricingModel: value }))
+                      setLimitDraft((value === 'events' ? implementation.eventLimit : implementation.profileLimit) ?? '')
+                    }
                     setSavingPricing(false)
                   }}
                   className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
@@ -399,6 +406,51 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
               )
             })}
           </div>
+
+          {(() => {
+            const model = implementation.pricingModel || 'profiles'
+            const field = model === 'events' ? 'event_limit' : 'profile_limit'
+            const stateKey = model === 'events' ? 'eventLimit' : 'profileLimit'
+            return (
+              <form
+                className="mt-4"
+                onSubmit={async e => {
+                  e.preventDefault()
+                  setSavingLimit(true)
+                  const value = limitDraft === '' ? null : Number(limitDraft)
+                  const res = await updateUsageLimit(credential, id, field, value)
+                  if (!res.error) setImplementation(prev => ({ ...prev, [stateKey]: value }))
+                  setSavingLimit(false)
+                }}
+              >
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>
+                  Contracted {model === 'events' ? 'events' : 'profiles'} limit
+                </label>
+                <div className="flex gap-2 max-w-sm">
+                  <input
+                    type="number"
+                    min="0"
+                    value={limitDraft}
+                    onChange={e => setLimitDraft(e.target.value)}
+                    placeholder="e.g. 100000"
+                    className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                    style={{ border: '1px solid var(--hairline)' }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingLimit}
+                    className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90"
+                    style={{ background: 'var(--gold)' }}
+                  >
+                    {savingLimit ? 'Saving…' : 'Save limit'}
+                  </button>
+                </div>
+                <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>
+                  Leave blank for no limit. The Control Centre shows usage against this figure.
+                </p>
+              </form>
+            )
+          })()}
         </div>
 
         {/* Progress steps for this implementation */}

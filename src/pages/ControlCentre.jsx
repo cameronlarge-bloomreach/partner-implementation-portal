@@ -298,20 +298,31 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                             // Lead with the metric this client is billed on.
                             const onEvents = selected.pricingModel === 'events'
                             const primary = onEvents
-                              ? { value: selected.eventCount, unit: 'events', at: selected.eventCountSyncedAt }
-                              : { value: selected.profileCount, unit: 'profiles', at: selected.profileCountSyncedAt }
+                              ? { value: selected.eventCount, unit: 'events', at: selected.eventCountSyncedAt, limit: selected.eventLimit }
+                              : { value: selected.profileCount, unit: 'profiles', at: selected.profileCountSyncedAt, limit: selected.profileLimit }
                             const secondary = onEvents
                               ? { value: selected.profileCount, unit: 'profiles' }
                               : { value: selected.eventCount, unit: 'events' }
                             const has = v => v !== null && v !== undefined
                             if (!has(primary.value) && !has(secondary.value)) return null
+                            const pct = has(primary.value) && primary.limit
+                              ? Math.round((Number(primary.value) / Number(primary.limit)) * 100)
+                              : null
+                            const barColor = pct === null ? 'var(--arctic)'
+                              : pct >= 100 ? 'var(--rust)' : pct >= 85 ? 'var(--gold)' : 'var(--moss)'
                             return (
                               <div className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
                                 {has(primary.value) && (
                                   <>
                                     <span className="font-mono font-semibold" style={{ color: 'var(--arctic)' }}>
                                       {Number(primary.value).toLocaleString()}
-                                    </span> {primary.unit}
+                                    </span>
+                                    {primary.limit && (
+                                      <span> / <span className="font-mono">{Number(primary.limit).toLocaleString()}</span></span>
+                                    )} {primary.unit}
+                                    {pct !== null && (
+                                      <span className="font-mono ml-1" style={{ color: barColor }}>· {pct}%</span>
+                                    )}
                                     <span
                                       className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
                                       style={{ background: 'var(--paper)', color: 'var(--muted)' }}
@@ -319,10 +330,15 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                                     >billing meter</span>
                                   </>
                                 )}
-                                {has(secondary.value) && (
-                                  <span> · {Number(secondary.value).toLocaleString()} {secondary.unit}</span>
+                                {pct !== null && (
+                                  <div className="mt-1.5 h-1.5 w-full max-w-xs rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
+                                    <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: barColor }} />
+                                  </div>
                                 )}
-                                {primary.at && <span> · synced {formatDateTime(primary.at)}</span>}
+                                {has(secondary.value) && (
+                                  <span className="block mt-1">{Number(secondary.value).toLocaleString()} {secondary.unit}</span>
+                                )}
+                                {primary.at && <span className="block">synced {formatDateTime(primary.at)}</span>}
                                 <div className="mt-1 italic">
                                   Indicative usage from Engagement, not the billed figure —
                                   {onEvents
