@@ -4,6 +4,7 @@ import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, delet
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 import ScopeOfWork from '../components/ScopeOfWork'
+import ImplementationDocuments from '../components/ImplementationDocuments'
 
 const TOUCH_POINTS = [
   { key: 'account_creation', label: 'Account Creation' },
@@ -370,16 +371,29 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
         </div>
 
         {/* Scope of Work (read-only) */}
-        {(impl?.scope || []).length > 0 && (
+        {((impl?.scope || []).length > 0 || (impl?.documents || []).length > 0) && (
           <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
             <h2 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: 'var(--ink)' }}>Scope of Work</h2>
-            <ScopeOfWork
-              credential={credential}
-              implementationId={impl.id}
-              items={impl.scope}
-              editable={false}
-              onChange={() => {}}
-            />
+            {(impl?.documents || []).length > 0 && (
+              <div className="mb-5">
+                <ImplementationDocuments
+                  credential={credential}
+                  implementationId={impl.id}
+                  documents={impl.documents}
+                  editable={false}
+                  onChange={() => {}}
+                />
+              </div>
+            )}
+            {(impl?.scope || []).length > 0 && (
+              <ScopeOfWork
+                credential={credential}
+                implementationId={impl.id}
+                items={impl.scope}
+                editable={false}
+                onChange={() => {}}
+              />
+            )}
           </div>
         )}
 

@@ -59,7 +59,18 @@ function shapeScope(s) {
   return { id: s.id, category: s.category, title: s.title, detail: s.detail || '', position: s.position }
 }
 
-function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows, scopeRows) {
+function shapeDoc(d) {
+  return {
+    id: d.id,
+    file_path: d.file_path,
+    file_name: d.file_name,
+    file_size: d.file_size,
+    content_type: d.content_type,
+    uploaded_at: d.uploaded_at,
+  }
+}
+
+function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows, scopeRows, docRows) {
   const { touchPoints, qaSteps } = splitTouchPoints(tpRows)
   const resp = {
     id: impl.id,
@@ -73,6 +84,7 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRo
     qaSteps,
     raid: raidRows.map(shapeRaid),
     scope: (scopeRows || []).map(shapeScope),
+    documents: (docRows || []).map(shapeDoc),
     meetingNotes: isAdmin ? noteRows.map(shapeNote) : [],
     bloomreachOrgId: isAdmin ? (impl.bloomreach_org_id || '') : undefined,
     bloomreachOrgName: isAdmin ? (impl.bloomreach_org_name || '') : undefined,
@@ -115,11 +127,12 @@ export async function getMyImplementations() {
 export async function getImplementation(_token, implementationId) {
   try {
     const isAdmin = await callerIsAdmin()
-    const [impl, tps, raid, scope, access, notes, scenarios] = await Promise.all([
+    const [impl, tps, raid, scope, docs, access, notes, scenarios] = await Promise.all([
       supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
       supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
       supabase.from('raid_items').select('*').eq('implementation_id', implementationId).order('created_at'),
       supabase.from('scope_items').select('*').eq('implementation_id', implementationId).order('category').order('position'),
+      supabase.from('documents').select('*').eq('implementation_id', implementationId).order('uploaded_at', { ascending: false }),
       supabase.from('access').select('email').eq('implementation_id', implementationId),
       isAdmin
         ? supabase.from('meeting_notes').select('*').eq('implementation_id', implementationId).order('meeting_date', { ascending: false })
@@ -128,7 +141,7 @@ export async function getImplementation(_token, implementationId) {
         ? supabase.from('scenario_sync').select('*').eq('implementation_id', implementationId).order('name')
         : Promise.resolve({ data: [] }),
     ])
-    const firstError = [impl, tps, raid, scope, access, notes, scenarios].find(r => r.error)
+    const firstError = [impl, tps, raid, scope, docs, access, notes, scenarios].find(r => r.error)
     if (firstError) throw firstError.error
     if (!impl.data) return { error: 'not_found' }
     const partnerGrants = await supabase.from('partner_access')
@@ -139,24 +152,25 @@ export async function getImplementation(_token, implementationId) {
     ]
     return buildImplResponse(
       impl.data, tps.data, raid.data, isAdmin,
-      emails, notes.data, scenarios.data, scope.data,
+      emails, notes.data, scenarios.data, scope.data, docs.data,
     )
   } catch (e) { return fail(e) }
 }
 
 export async function getAllImplementations() {
   try {
-    const [impls, tps, raid, scope, access, notes, scenarios, partnerGrants] = await Promise.all([
+    const [impls, tps, raid, scope, docs, access, notes, scenarios, partnerGrants] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
       supabase.from('raid_items').select('*').order('created_at'),
       supabase.from('scope_items').select('*').order('position'),
+      supabase.from('documents').select('*').order('uploaded_at', { ascending: false }),
       supabase.from('access').select('email, implementation_id'),
       supabase.from('meeting_notes').select('*').order('meeting_date', { ascending: false }),
       supabase.from('scenario_sync').select('*').order('name'),
       supabase.from('partner_access').select('email, partner_name'),
     ])
-    const firstError = [impls, tps, raid, scope, access, notes, scenarios].find(r => r.error)
+    const firstError = [impls, tps, raid, scope, docs, access, notes, scenarios].find(r => r.error)
     if (firstError) throw firstError.error
     const grantsByPartner = {}
     for (const g of partnerGrants.data || []) {
@@ -170,6 +184,7 @@ export async function getAllImplementations() {
     const tpMap = byImpl(tps.data)
     const raidMap = byImpl(raid.data)
     const scopeMap = byImpl(scope.data)
+    const docMap = byImpl(docs.data)
     const accessMap = byImpl(access.data)
     const noteMap = byImpl(notes.data)
     const scenarioMap = byImpl(scenarios.data)
@@ -179,7 +194,7 @@ export async function getAllImplementations() {
         ...(accessMap[impl.id] || []).map(a => a.email),
         ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
       ],
-      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [],
+      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [], docMap[impl.id] || [],
     ))
   } catch (e) { return fail(e) }
 }
@@ -251,6 +266,44 @@ export async function updateScopeItem(_token, id, fields) {
 export async function deleteScopeItem(_token, id) {
   const { error } = await supabase.from('scope_items').delete().eq('id', id)
   return error ? fail(error) : { ok: true }
+}
+
+// ---- Documents (admin-upload, partner-download) ----
+
+const DOCS_BUCKET = 'implementation-docs'
+
+export async function uploadDocument(_token, implementationId, file) {
+  // Path's first segment is the implementation id — the storage policy reads it.
+  const safeName = file.name.replace(/[^\w.\-]+/g, '_')
+  const path = `${implementationId}/${Date.now()}-${safeName}`
+  const { error: upErr } = await supabase.storage.from(DOCS_BUCKET)
+    .upload(path, file, { contentType: file.type || undefined, upsert: false })
+  if (upErr) return fail(upErr)
+  const { data, error } = await supabase.from('documents').insert({
+    implementation_id: implementationId,
+    file_path: path,
+    file_name: file.name,
+    file_size: file.size,
+    content_type: file.type || '',
+  }).select('*').single()
+  if (error) {
+    await supabase.storage.from(DOCS_BUCKET).remove([path]) // roll back orphaned upload
+    return fail(error)
+  }
+  return { ok: true, doc: shapeDoc(data) }
+}
+
+// Signed URL so a private-bucket file can be opened/downloaded briefly.
+export async function getDocumentUrl(_token, filePath) {
+  const { data, error } = await supabase.storage.from(DOCS_BUCKET).createSignedUrl(filePath, 600)
+  return error ? fail(error) : { ok: true, url: data.signedUrl }
+}
+
+export async function deleteDocument(_token, doc) {
+  const { error } = await supabase.from('documents').delete().eq('id', doc.id)
+  if (error) return fail(error)
+  await supabase.storage.from(DOCS_BUCKET).remove([doc.file_path])
+  return { ok: true }
 }
 
 export async function addImplementation(_token, data) {

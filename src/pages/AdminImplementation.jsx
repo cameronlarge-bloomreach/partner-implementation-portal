@@ -10,6 +10,7 @@ import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 import StepsManager from '../components/StepsManager'
 import ScopeOfWork from '../components/ScopeOfWork'
+import ImplementationDocuments from '../components/ImplementationDocuments'
 import ProgressRing from '../components/ProgressRing'
 
 const DATE_FIELDS = [
@@ -92,8 +93,9 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [savingSlack, setSavingSlack] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
 
-  // Scope of work
+  // Scope of work + documents
   const [scopeItems, setScopeItems] = useState([])
+  const [documents, setDocuments] = useState([])
   // RAID
   const [raidItems, setRaidItems] = useState([])
   const [showAddRaid, setShowAddRaid] = useState(false)
@@ -118,6 +120,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
         setSlackChannelId(impl.slackChannelId || '')
         setRaidItems(impl.raid || [])
         setScopeItems(impl.scope || [])
+        setDocuments(impl.documents || [])
         const notes = {}
         Object.keys(impl.qaSteps || {}).forEach(k => {
           if (k.endsWith('_notes')) notes[k.replace('_notes', '')] = impl.qaSteps[k]
@@ -408,9 +411,23 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
           <div className="mb-4">
             <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Scope of Work</h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
-              What this engagement covers. Visible to the partner on their dashboard.
+              What this engagement covers. Documents and items are visible to the partner on their dashboard.
             </p>
           </div>
+
+          {/* SOW / partner documents */}
+          <div className="mb-6">
+            <p className="text-[11px] font-medium uppercase tracking-widest mb-2" style={{ color: 'var(--muted)' }}>Documents</p>
+            <ImplementationDocuments
+              credential={credential}
+              implementationId={id}
+              documents={documents}
+              editable={true}
+              onChange={setDocuments}
+            />
+          </div>
+
+          <p className="text-[11px] font-medium uppercase tracking-widest mb-2" style={{ color: 'var(--muted)' }}>Scope items</p>
           <ScopeOfWork
             credential={credential}
             implementationId={id}
