@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { getImplementation, updateTouchPoint, addRaidItem, updateRaidItem, deleteRaidItem, addAccess, getStepDefinitions } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
+import ScopeOfWork from '../components/ScopeOfWork'
 
 const TOUCH_POINTS = [
   { key: 'account_creation', label: 'Account Creation' },
@@ -367,6 +368,20 @@ export default function PartnerDashboard({ credential, userInfo, onLogout }) {
             </div>
           </div>
         </div>
+
+        {/* Scope of Work (read-only) */}
+        {(impl?.scope || []).length > 0 && (
+          <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
+            <h2 className="text-sm font-semibold uppercase tracking-wide mb-4" style={{ color: 'var(--ink)' }}>Scope of Work</h2>
+            <ScopeOfWork
+              credential={credential}
+              implementationId={impl.id}
+              items={impl.scope}
+              editable={false}
+              onChange={() => {}}
+            />
+          </div>
+        )}
 
         {/* Row 2: QA + RAID */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

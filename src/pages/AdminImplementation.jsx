@@ -9,6 +9,7 @@ import {
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 import StepsManager from '../components/StepsManager'
+import ScopeOfWork from '../components/ScopeOfWork'
 import ProgressRing from '../components/ProgressRing'
 
 const DATE_FIELDS = [
@@ -91,6 +92,8 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
   const [savingSlack, setSavingSlack] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
 
+  // Scope of work
+  const [scopeItems, setScopeItems] = useState([])
   // RAID
   const [raidItems, setRaidItems] = useState([])
   const [showAddRaid, setShowAddRaid] = useState(false)
@@ -114,6 +117,7 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
         setDates(d)
         setSlackChannelId(impl.slackChannelId || '')
         setRaidItems(impl.raid || [])
+        setScopeItems(impl.scope || [])
         const notes = {}
         Object.keys(impl.qaSteps || {}).forEach(k => {
           if (k.endsWith('_notes')) notes[k.replace('_notes', '')] = impl.qaSteps[k]
@@ -398,6 +402,23 @@ export default function AdminImplementation({ credential, userInfo, onLogout }) 
             onClose={() => setShowSteps(false)}
           />
         )}
+
+        {/* Scope of work */}
+        <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>Scope of Work</h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
+              What this engagement covers. Visible to the partner on their dashboard.
+            </p>
+          </div>
+          <ScopeOfWork
+            credential={credential}
+            implementationId={id}
+            items={scopeItems}
+            editable={true}
+            onChange={setScopeItems}
+          />
+        </div>
 
         {/* Slack Notifications */}
         <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>

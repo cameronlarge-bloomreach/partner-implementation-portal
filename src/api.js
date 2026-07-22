@@ -55,7 +55,11 @@ function shapeScenario(s) {
   return { scenario_id: s.scenario_id, name: s.name, status: s.status, tags: s.tags }
 }
 
-function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows) {
+function shapeScope(s) {
+  return { id: s.id, category: s.category, title: s.title, detail: s.detail || '', position: s.position }
+}
+
+function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows, scopeRows) {
   const { touchPoints, qaSteps } = splitTouchPoints(tpRows)
   const resp = {
     id: impl.id,
@@ -68,6 +72,7 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRo
     touchPoints,
     qaSteps,
     raid: raidRows.map(shapeRaid),
+    scope: (scopeRows || []).map(shapeScope),
     meetingNotes: isAdmin ? noteRows.map(shapeNote) : [],
     bloomreachOrgId: isAdmin ? (impl.bloomreach_org_id || '') : undefined,
     bloomreachOrgName: isAdmin ? (impl.bloomreach_org_name || '') : undefined,
@@ -110,10 +115,11 @@ export async function getMyImplementations() {
 export async function getImplementation(_token, implementationId) {
   try {
     const isAdmin = await callerIsAdmin()
-    const [impl, tps, raid, access, notes, scenarios] = await Promise.all([
+    const [impl, tps, raid, scope, access, notes, scenarios] = await Promise.all([
       supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
       supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
       supabase.from('raid_items').select('*').eq('implementation_id', implementationId).order('created_at'),
+      supabase.from('scope_items').select('*').eq('implementation_id', implementationId).order('category').order('position'),
       supabase.from('access').select('email').eq('implementation_id', implementationId),
       isAdmin
         ? supabase.from('meeting_notes').select('*').eq('implementation_id', implementationId).order('meeting_date', { ascending: false })
@@ -122,7 +128,7 @@ export async function getImplementation(_token, implementationId) {
         ? supabase.from('scenario_sync').select('*').eq('implementation_id', implementationId).order('name')
         : Promise.resolve({ data: [] }),
     ])
-    const firstError = [impl, tps, raid, access, notes, scenarios].find(r => r.error)
+    const firstError = [impl, tps, raid, scope, access, notes, scenarios].find(r => r.error)
     if (firstError) throw firstError.error
     if (!impl.data) return { error: 'not_found' }
     const partnerGrants = await supabase.from('partner_access')
@@ -133,23 +139,24 @@ export async function getImplementation(_token, implementationId) {
     ]
     return buildImplResponse(
       impl.data, tps.data, raid.data, isAdmin,
-      emails, notes.data, scenarios.data,
+      emails, notes.data, scenarios.data, scope.data,
     )
   } catch (e) { return fail(e) }
 }
 
 export async function getAllImplementations() {
   try {
-    const [impls, tps, raid, access, notes, scenarios, partnerGrants] = await Promise.all([
+    const [impls, tps, raid, scope, access, notes, scenarios, partnerGrants] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
       supabase.from('raid_items').select('*').order('created_at'),
+      supabase.from('scope_items').select('*').order('position'),
       supabase.from('access').select('email, implementation_id'),
       supabase.from('meeting_notes').select('*').order('meeting_date', { ascending: false }),
       supabase.from('scenario_sync').select('*').order('name'),
       supabase.from('partner_access').select('email, partner_name'),
     ])
-    const firstError = [impls, tps, raid, access, notes, scenarios].find(r => r.error)
+    const firstError = [impls, tps, raid, scope, access, notes, scenarios].find(r => r.error)
     if (firstError) throw firstError.error
     const grantsByPartner = {}
     for (const g of partnerGrants.data || []) {
@@ -162,6 +169,7 @@ export async function getAllImplementations() {
     }
     const tpMap = byImpl(tps.data)
     const raidMap = byImpl(raid.data)
+    const scopeMap = byImpl(scope.data)
     const accessMap = byImpl(access.data)
     const noteMap = byImpl(notes.data)
     const scenarioMap = byImpl(scenarios.data)
@@ -171,7 +179,7 @@ export async function getAllImplementations() {
         ...(accessMap[impl.id] || []).map(a => a.email),
         ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
       ],
-      noteMap[impl.id] || [], scenarioMap[impl.id] || [],
+      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [],
     ))
   } catch (e) { return fail(e) }
 }
@@ -215,6 +223,33 @@ export async function updateRaidItem(_token, id, fields) {
 
 export async function deleteRaidItem(_token, id) {
   const { error } = await supabase.from('raid_items').delete().eq('id', id)
+  return error ? fail(error) : { ok: true }
+}
+
+// ---- Scope of work (admin-editable, partner-visible) ----
+
+export async function addScopeItem(_token, implementationId, item) {
+  const { data: existing } = await supabase.from('scope_items')
+    .select('position').eq('implementation_id', implementationId).eq('category', item.category)
+    .order('position', { ascending: false }).limit(1)
+  const position = (existing?.[0]?.position || 0) + 1
+  const { data, error } = await supabase.from('scope_items').insert({
+    implementation_id: implementationId,
+    category: item.category,
+    title: (item.title || '').trim(),
+    detail: (item.detail || '').trim(),
+    position,
+  }).select('id').single()
+  return error ? fail(error) : { ok: true, id: data.id }
+}
+
+export async function updateScopeItem(_token, id, fields) {
+  const { error } = await supabase.from('scope_items').update(fields).eq('id', id)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function deleteScopeItem(_token, id) {
+  const { error } = await supabase.from('scope_items').delete().eq('id', id)
   return error ? fail(error) : { ok: true }
 }
 
