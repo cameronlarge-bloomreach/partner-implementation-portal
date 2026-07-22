@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllImplementations, addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, getStepDefinitions } from '../api'
+import { getAllImplementations, addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, getStepDefinitions, updatePricingModel, updateUsageLimit } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 import ProgressRing from '../components/ProgressRing'
@@ -62,6 +62,9 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
   const [editingOrgLink, setEditingOrgLink] = useState(false)
   const [orgLinkInput, setOrgLinkInput] = useState({ orgId: '', orgName: '' })
   const [savingOrgLink, setSavingOrgLink] = useState(false)
+  const [savingPricing, setSavingPricing] = useState(false)
+  const [limitDraft, setLimitDraft] = useState('')
+  const [savingLimit, setSavingLimit] = useState(false)
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -78,6 +81,36 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
   }, [])
 
   const selected = implementations.find(i => i.id === selectedId) || null
+
+  // Keep the limit field in step with the selected client's active meter.
+  useEffect(() => {
+    if (!selected) { setLimitDraft(''); return }
+    const m = selected.pricingModel || 'profiles'
+    setLimitDraft((m === 'events' ? selected.eventLimit : selected.profileLimit) ?? '')
+  }, [selectedId, selected?.pricingModel, selected?.profileLimit, selected?.eventLimit])
+
+  function patchSelected(fields) {
+    setImplementations(prev => prev.map(impl => (impl.id === selectedId ? { ...impl, ...fields } : impl)))
+  }
+
+  async function handleSetPricingModel(value) {
+    setSavingPricing(true)
+    const res = await updatePricingModel(credential, selectedId, value)
+    if (!res.error) patchSelected({ pricingModel: value })
+    setSavingPricing(false)
+  }
+
+  async function handleSaveLimit(e) {
+    e.preventDefault()
+    const model = selected.pricingModel || 'profiles'
+    const field = model === 'events' ? 'event_limit' : 'profile_limit'
+    const stateKey = model === 'events' ? 'eventLimit' : 'profileLimit'
+    const value = limitDraft === '' ? null : Number(limitDraft)
+    setSavingLimit(true)
+    const res = await updateUsageLimit(credential, selectedId, field, value)
+    if (!res.error) patchSelected({ [stateKey]: value })
+    setSavingLimit(false)
+  }
 
   const filtered = implementations.filter(i => {
     const q = search.trim().toLowerCase()
@@ -348,6 +381,53 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                               </div>
                             )
                           })()}
+
+                          {/* Billing meter + contracted limit */}
+                          <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--hairline)' }}>
+                            <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Billing meter</p>
+                            <div className="flex gap-2">
+                              {[['profiles', 'Profiles'], ['events', 'Events']].map(([value, label]) => {
+                                const active = (selected.pricingModel || 'profiles') === value
+                                return (
+                                  <button
+                                    key={value}
+                                    disabled={savingPricing}
+                                    onClick={() => handleSetPricingModel(value)}
+                                    className="text-xs font-medium px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
+                                    style={active
+                                      ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' }
+                                      : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}
+                                  >
+                                    {label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <form onSubmit={handleSaveLimit} className="mt-2.5">
+                              <label className="block text-[10px] font-medium uppercase tracking-widest mb-1" style={{ color: 'var(--muted)' }}>
+                                Contracted {(selected.pricingModel || 'profiles') === 'events' ? 'events' : 'profiles'} limit
+                              </label>
+                              <div className="flex gap-2 max-w-xs">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={limitDraft}
+                                  onChange={e => setLimitDraft(e.target.value)}
+                                  placeholder="e.g. 100000 · blank for none"
+                                  className="flex-1 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none"
+                                  style={{ border: '1px solid var(--hairline)' }}
+                                />
+                                <button
+                                  type="submit"
+                                  disabled={savingLimit}
+                                  className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50"
+                                  style={{ background: 'var(--gold)' }}
+                                >
+                                  {savingLimit ? 'Saving…' : 'Save'}
+                                </button>
+                              </div>
+                            </form>
+                          </div>
                         </div>
                       ) : (
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>Not linked yet — ask Claude to match this implementation to its Bloomreach org, or link it manually above.</p>
