@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { uploadDocument, getDocumentUrl, deleteDocument } from '../api'
+import { uploadDocument, addDocumentLink, getDocumentUrl, deleteDocument } from '../api'
 
 function fmtSize(bytes) {
   if (!bytes && bytes !== 0) return ''
@@ -15,6 +15,10 @@ export default function ImplementationDocuments({ credential, implementationId, 
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
   const [opening, setOpening] = useState(null)
+  const [addingLink, setAddingLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkLabel, setLinkLabel] = useState('')
+  const [savingLink, setSavingLink] = useState(false)
 
   async function onPick(e) {
     const file = e.target.files?.[0]
@@ -30,11 +34,23 @@ export default function ImplementationDocuments({ credential, implementationId, 
   }
 
   async function open(doc) {
+    if (doc.url) { window.open(doc.url, '_blank', 'noopener'); return } // link entry
     setOpening(doc.id)
     const res = await getDocumentUrl(credential, doc.file_path)
     setOpening(null)
     if (res.error) { setError(res.error); return }
     window.open(res.url, '_blank', 'noopener')
+  }
+
+  async function saveLink(e) {
+    e.preventDefault()
+    if (!linkUrl.trim()) return
+    setSavingLink(true)
+    const res = await addDocumentLink(credential, implementationId, { url: linkUrl, label: linkLabel })
+    setSavingLink(false)
+    if (res.error) { setError(res.error); return }
+    onChange([res.doc, ...documents])
+    setLinkUrl(''); setLinkLabel(''); setAddingLink(false)
   }
 
   async function remove(doc) {
@@ -55,17 +71,19 @@ export default function ImplementationDocuments({ credential, implementationId, 
         <ul className="mb-2" style={{ border: '1px solid var(--hairline)', borderRadius: '0.5rem', overflow: 'hidden' }}>
           {documents.map(doc => (
             <li key={doc.id} className="flex items-center gap-3 px-3 py-2" style={{ borderBottom: '1px solid var(--hairline)' }}>
-              <span className="text-sm">📄</span>
+              <span className="text-sm">{doc.url ? '🔗' : '📄'}</span>
               <button
                 onClick={() => open(doc)}
                 disabled={opening === doc.id}
                 className="min-w-0 text-left text-sm truncate hover:underline disabled:opacity-50"
                 style={{ color: 'var(--arctic)' }}
-                title={doc.file_name}
+                title={doc.url || doc.file_name}
               >
                 {opening === doc.id ? 'Opening…' : doc.file_name}
               </button>
-              <span className="ml-auto shrink-0 font-mono text-[11px]" style={{ color: 'var(--muted)' }}>{fmtSize(doc.file_size)}</span>
+              <span className="ml-auto shrink-0 font-mono text-[11px]" style={{ color: 'var(--muted)' }}>
+                {doc.url ? 'link' : fmtSize(doc.file_size)}
+              </span>
               {editable && (
                 <button className="shrink-0 text-xs" style={{ color: 'var(--rust)' }} onClick={() => remove(doc)}>Remove</button>
               )}
@@ -82,15 +100,51 @@ export default function ImplementationDocuments({ credential, implementationId, 
             onChange={onPick}
             className="hidden"
           />
-          <button
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-            className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-            style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
-          >
-            {uploading ? 'Uploading…' : 'Upload document'}
-          </button>
-          <span className="ml-2 text-xs" style={{ color: 'var(--muted)' }}>PDF or Word, up to 25 MB</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+            >
+              {uploading ? 'Uploading…' : 'Upload document'}
+            </button>
+            <button
+              onClick={() => setAddingLink(v => !v)}
+              className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+            >
+              Add link
+            </button>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>PDF or Word up to 25 MB, or a link to a doc</span>
+          </div>
+          {addingLink && (
+            <form onSubmit={saveLink} className="mt-2 flex flex-col gap-2 max-w-md">
+              <input
+                type="text"
+                value={linkUrl}
+                onChange={e => setLinkUrl(e.target.value)}
+                placeholder="https://docs.google.com/…"
+                className="rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                style={{ border: '1px solid var(--hairline)' }}
+                autoFocus
+              />
+              <input
+                type="text"
+                value={linkLabel}
+                onChange={e => setLinkLabel(e.target.value)}
+                placeholder="Label (optional, e.g. Everyman SOW — Google Doc)"
+                className="rounded-lg px-3 py-1.5 text-sm focus:outline-none"
+                style={{ border: '1px solid var(--hairline)' }}
+              />
+              <div className="flex gap-2">
+                <button type="submit" disabled={savingLink} className="text-black text-sm font-medium px-4 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
+                  {savingLink ? 'Saving…' : 'Add link'}
+                </button>
+                <button type="button" onClick={() => { setAddingLink(false); setLinkUrl(''); setLinkLabel('') }} className="text-sm px-3 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
+              </div>
+            </form>
+          )}
         </div>
       )}
     </div>

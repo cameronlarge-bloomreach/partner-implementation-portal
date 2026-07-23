@@ -67,6 +67,7 @@ function shapeDoc(d) {
     file_size: d.file_size,
     content_type: d.content_type,
     uploaded_at: d.uploaded_at,
+    url: d.url || null, // set when the entry is a link rather than an uploaded file
   }
 }
 
@@ -293,6 +294,19 @@ export async function uploadDocument(_token, implementationId, file) {
   return { ok: true, doc: shapeDoc(data) }
 }
 
+// Add a link entry (SOW hosted elsewhere, e.g. Google Doc) — no file upload.
+export async function addDocumentLink(_token, implementationId, { url, label }) {
+  let clean = url.trim()
+  if (!/^https?:\/\//i.test(clean)) clean = 'https://' + clean
+  const { data, error } = await supabase.from('documents').insert({
+    implementation_id: implementationId,
+    url: clean,
+    file_name: (label || '').trim() || clean,
+    file_path: null,
+  }).select('*').single()
+  return error ? fail(error) : { ok: true, doc: shapeDoc(data) }
+}
+
 // Signed URL so a private-bucket file can be opened/downloaded briefly.
 export async function getDocumentUrl(_token, filePath) {
   const { data, error } = await supabase.storage.from(DOCS_BUCKET).createSignedUrl(filePath, 600)
@@ -302,7 +316,7 @@ export async function getDocumentUrl(_token, filePath) {
 export async function deleteDocument(_token, doc) {
   const { error } = await supabase.from('documents').delete().eq('id', doc.id)
   if (error) return fail(error)
-  await supabase.storage.from(DOCS_BUCKET).remove([doc.file_path])
+  if (doc.file_path) await supabase.storage.from(DOCS_BUCKET).remove([doc.file_path]) // links have no stored file
   return { ok: true }
 }
 
