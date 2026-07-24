@@ -31,6 +31,29 @@ function Tile({ value, label, warn }) {
   )
 }
 
+// One billing meter inside a client row.
+function MeterLine({ meter }) {
+  const b = band(meter.pct)
+  return (
+    <div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium" style={{ color: 'var(--ink)', minWidth: '150px' }}>{meter.label}</span>
+        <span className="font-mono text-xs" style={{ color: 'var(--ink)' }}>
+          {fmt(meter.value)}{meter.limit ? <span style={{ color: 'var(--muted)' }}> / {fmt(meter.limit)}</span> : ''}
+        </span>
+        {meter.pct !== null
+          ? <span className="font-mono text-xs" style={{ color: b.color }}>{meter.pct}%{b.label ? ` · ${b.label}` : ''}</span>
+          : <span className="text-xs" style={{ color: 'var(--muted)' }}>{meter.limit ? 'no usage yet' : 'no limit set'}</span>}
+      </div>
+      {meter.pct !== null && (
+        <div className="mt-1 h-1.5 w-full max-w-sm rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.min(meter.pct, 100)}%`, background: b.color }} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 const MODEL_FILTERS = [['all', 'All'], ['profiles', 'Profiles'], ['events', 'Events']]
 
 export default function Analytics({ credential, userInfo, onLogout }) {
@@ -52,32 +75,35 @@ export default function Analytics({ credential, userInfo, onLogout }) {
   const linked = implementations.filter(i => i.bloomreachOrgId)
   const unlinkedCount = implementations.length - linked.length
 
-  // One row per (client, billing meter). Each client contributes its model's two meters.
-  const rows = []
-  for (const impl of linked) {
+  // One entry per client, carrying its model's two meters.
+  const clients = linked.map(impl => {
     const model = impl.pricingModel || 'profiles'
-    for (const meter of USAGE_METERS[model]) {
+    const meters = USAGE_METERS[model].map(meter => {
       const m = (impl.usageMetrics || {})[meter.key] || {}
       const value = m.value ?? null
       const limit = m.limit ?? null
       const pct = (value !== null && limit) ? Math.round((Number(value) / Number(limit)) * 100) : null
-      rows.push({ impl, model, meterLabel: meter.label, value, limit, pct, updatedAt: m.updatedAt })
-    }
-  }
-
-  const filtered = modelFilter === 'all' ? rows : rows.filter(r => r.model === modelFilter)
-
-  // Highest utilisation first; rows with no % (no limit/usage) after, by usage desc.
-  const sorted = [...filtered].sort((a, b) => {
-    if (a.pct === null && b.pct === null) return (Number(b.value) || 0) - (Number(a.value) || 0)
-    if (a.pct === null) return 1
-    if (b.pct === null) return -1
-    return b.pct - a.pct
+      return { key: meter.key, label: meter.label, value, limit, pct, updatedAt: m.updatedAt }
+    })
+    const worst = meters.reduce((mx, m) => (m.pct !== null && (mx === null || m.pct > mx) ? m.pct : mx), null)
+    const updated = meters.map(m => m.updatedAt).filter(Boolean).sort().slice(-1)[0] || null
+    return { impl, model, meters, worst, updated }
   })
 
-  const metersTracked = rows.filter(r => r.limit).length
-  const nearLimit = rows.filter(r => r.pct !== null && r.pct >= 85 && r.pct < 100).length
-  const overLimit = rows.filter(r => r.pct !== null && r.pct >= 100).length
+  const filtered = modelFilter === 'all' ? clients : clients.filter(c => c.model === modelFilter)
+
+  // Clients with the highest single-meter utilisation first; untracked after.
+  const sorted = [...filtered].sort((a, b) => {
+    if (a.worst === null && b.worst === null) return a.impl.client_name.localeCompare(b.impl.client_name)
+    if (a.worst === null) return 1
+    if (b.worst === null) return -1
+    return b.worst - a.worst
+  })
+
+  const allMeters = clients.flatMap(c => c.meters)
+  const metersTracked = allMeters.filter(m => m.limit).length
+  const nearLimit = allMeters.filter(m => m.pct !== null && m.pct >= 85 && m.pct < 100).length
+  const overLimit = allMeters.filter(m => m.pct !== null && m.pct >= 100).length
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
@@ -133,50 +159,35 @@ export default function Analytics({ credential, userInfo, onLogout }) {
                 <table className="w-full text-sm" style={{ minWidth: '760px' }}>
                   <thead style={{ background: 'var(--paper)', borderBottom: '1px solid var(--hairline)' }}>
                     <tr>
-                      {['Partner / Client', 'Meter', 'Usage / Limit', 'Utilisation', 'Updated'].map(h => (
-                        <th key={h} className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>{h}</th>
-                      ))}
+                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Partner / Client</th>
+                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Model</th>
+                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Billing meters</th>
+                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Updated</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y" style={{ borderColor: 'var(--paper)' }}>
-                    {sorted.map((r, i) => {
-                      const b = band(r.pct)
-                      return (
-                        <tr key={r.impl.id + r.meterLabel} className="hover:bg-[var(--paper)] transition-colors">
-                          <td className="px-5 py-4">
-                            <div className="font-medium" style={{ color: 'var(--ink)' }}>{r.impl.client_name}</div>
-                            <div className="text-xs" style={{ color: 'var(--muted)' }}>{r.impl.partner_name}</div>
-                          </td>
-                          <td className="px-5 py-4">
-                            <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
-                              {r.meterLabel}
-                            </span>
-                          </td>
-                          <td className="px-5 py-4 font-mono" style={{ color: 'var(--ink)' }}>
-                            {fmt(r.value)}{r.limit ? <span style={{ color: 'var(--muted)' }}> / {fmt(r.limit)}</span> : ''}
-                          </td>
-                          <td className="px-5 py-4" style={{ minWidth: '170px' }}>
-                            {r.pct === null ? (
-                              <span className="text-xs" style={{ color: 'var(--muted)' }}>{r.limit ? 'no usage yet' : 'no limit set'}</span>
-                            ) : (
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <span className="font-mono text-xs" style={{ color: b.color }}>{r.pct}%</span>
-                                  {b.label && <span className="text-[10px] font-medium" style={{ color: b.color }}>{b.label}</span>}
-                                </div>
-                                <div className="mt-1 h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
-                                  <div className="h-full rounded-full" style={{ width: `${Math.min(r.pct, 100)}%`, background: b.color }} />
-                                </div>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-5 py-4 text-xs" style={{ color: 'var(--muted)' }}>{formatDateTime(r.updatedAt)}</td>
-                        </tr>
-                      )
-                    })}
+                    {sorted.map(c => (
+                      <tr key={c.impl.id} className="hover:bg-[var(--paper)] transition-colors align-top">
+                        <td className="px-5 py-4">
+                          <div className="font-medium" style={{ color: 'var(--ink)' }}>{c.impl.client_name}</div>
+                          <div className="text-xs" style={{ color: 'var(--muted)' }}>{c.impl.partner_name}</div>
+                        </td>
+                        <td className="px-5 py-4">
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
+                            {c.model === 'events' ? 'Events' : 'Profiles'}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4" style={{ minWidth: '340px' }}>
+                          <div className="space-y-3">
+                            {c.meters.map(m => <MeterLine key={m.key} meter={m} />)}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 text-xs" style={{ color: 'var(--muted)' }}>{formatDateTime(c.updated)}</td>
+                      </tr>
+                    ))}
                     {sorted.length === 0 && (
-                      <tr><td colSpan={5} className="px-5 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                        No {modelFilter !== 'all' ? modelFilter + '-model ' : ''}meters recorded yet — set limits in the Control Centre.
+                      <tr><td colSpan={4} className="px-5 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
+                        No {modelFilter !== 'all' ? modelFilter + '-model ' : ''}clients recorded yet — set limits in the Control Centre.
                       </td></tr>
                     )}
                   </tbody>
