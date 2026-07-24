@@ -10,6 +10,7 @@ import PartnerDashboard from './pages/PartnerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminImplementation from './pages/AdminImplementation'
 import ControlCentre from './pages/ControlCentre'
+import Analytics from './pages/Analytics'
 
 function defaultRouteFor(userInfo) {
   if (userInfo?.isAdmin) return '/admin'
@@ -136,6 +137,16 @@ export default function App() {
             : !userInfo?.isAdmin
             ? <Navigate to="/" replace />
             : <ControlCentre credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+        }
+      />
+      <Route
+        path="/admin/analytics"
+        element={
+          !credential
+            ? <Navigate to="/login" replace />
+            : !userInfo?.isAdmin
+            ? <Navigate to="/" replace />
+            : <Analytics credential={credential} userInfo={userInfo} onLogout={handleLogout} />
         }
       />
       <Route
