@@ -59,6 +59,27 @@ function shapeScope(s) {
   return { id: s.id, category: s.category, title: s.title, detail: s.detail || '', position: s.position }
 }
 
+// The two billing meters for each pricing model. Order matters (display order).
+export const USAGE_METERS = {
+  profiles: [
+    { key: 'billable_profiles', label: 'Billable Profiles', hint: 'daily-snapshot average' },
+    { key: 'muv', label: 'Monthly Unique Visitors', hint: 'resets monthly' },
+  ],
+  events: [
+    { key: 'processed_events', label: 'Processed Events', hint: 'per calendar month' },
+    { key: 'max_event_storage', label: 'Max Event Storage', hint: 'point-in-time max' },
+  ],
+}
+
+// Map of metric_key -> { value, limit, updatedAt } for one implementation.
+function shapeMetrics(rows) {
+  const out = {}
+  for (const r of rows || []) {
+    out[r.metric_key] = { value: r.usage_value ?? null, limit: r.usage_limit ?? null, updatedAt: r.updated_at }
+  }
+  return out
+}
+
 function shapeDoc(d) {
   return {
     id: d.id,
@@ -71,7 +92,7 @@ function shapeDoc(d) {
   }
 }
 
-function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows, scopeRows, docRows) {
+function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows, scopeRows, docRows, metricRows) {
   const { touchPoints, qaSteps } = splitTouchPoints(tpRows)
   const resp = {
     id: impl.id,
@@ -100,6 +121,8 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRo
     eventCountSyncedAt: isAdmin ? (impl.event_count_synced_at || '') : undefined,
     profileLimit: isAdmin ? (impl.profile_limit ?? null) : undefined,
     eventLimit: isAdmin ? (impl.event_limit ?? null) : undefined,
+    // Four contractual billing meters (manual). Admin-only.
+    usageMetrics: isAdmin ? shapeMetrics(metricRows) : {},
   }
   for (const key of IMPL_DATE_KEYS) resp[key] = impl[key] || ''
   return resp
@@ -128,7 +151,7 @@ export async function getMyImplementations() {
 export async function getImplementation(_token, implementationId) {
   try {
     const isAdmin = await callerIsAdmin()
-    const [impl, tps, raid, scope, docs, access, notes, scenarios] = await Promise.all([
+    const [impl, tps, raid, scope, docs, access, notes, scenarios, metrics] = await Promise.all([
       supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
       supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
       supabase.from('raid_items').select('*').eq('implementation_id', implementationId).order('created_at'),
@@ -140,6 +163,9 @@ export async function getImplementation(_token, implementationId) {
         : Promise.resolve({ data: [] }),
       isAdmin
         ? supabase.from('scenario_sync').select('*').eq('implementation_id', implementationId).order('name')
+        : Promise.resolve({ data: [] }),
+      isAdmin
+        ? supabase.from('usage_metrics').select('*').eq('implementation_id', implementationId)
         : Promise.resolve({ data: [] }),
     ])
     const firstError = [impl, tps, raid, scope, docs, access, notes, scenarios].find(r => r.error)
@@ -153,14 +179,14 @@ export async function getImplementation(_token, implementationId) {
     ]
     return buildImplResponse(
       impl.data, tps.data, raid.data, isAdmin,
-      emails, notes.data, scenarios.data, scope.data, docs.data,
+      emails, notes.data, scenarios.data, scope.data, docs.data, metrics.data,
     )
   } catch (e) { return fail(e) }
 }
 
 export async function getAllImplementations() {
   try {
-    const [impls, tps, raid, scope, docs, access, notes, scenarios, partnerGrants] = await Promise.all([
+    const [impls, tps, raid, scope, docs, access, notes, scenarios, metrics, partnerGrants] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
       supabase.from('raid_items').select('*').order('created_at'),
@@ -169,6 +195,7 @@ export async function getAllImplementations() {
       supabase.from('access').select('email, implementation_id'),
       supabase.from('meeting_notes').select('*').order('meeting_date', { ascending: false }),
       supabase.from('scenario_sync').select('*').order('name'),
+      supabase.from('usage_metrics').select('*'),
       supabase.from('partner_access').select('email, partner_name'),
     ])
     const firstError = [impls, tps, raid, scope, docs, access, notes, scenarios].find(r => r.error)
@@ -179,7 +206,7 @@ export async function getAllImplementations() {
     }
     const byImpl = (rows) => {
       const map = {}
-      for (const r of rows) (map[r.implementation_id] ||= []).push(r)
+      for (const r of rows || []) (map[r.implementation_id] ||= []).push(r)
       return map
     }
     const tpMap = byImpl(tps.data)
@@ -189,13 +216,14 @@ export async function getAllImplementations() {
     const accessMap = byImpl(access.data)
     const noteMap = byImpl(notes.data)
     const scenarioMap = byImpl(scenarios.data)
+    const metricMap = byImpl(metrics.data)
     return impls.data.map(impl => buildImplResponse(
       impl, tpMap[impl.id] || [], raidMap[impl.id] || [], true,
       [
         ...(accessMap[impl.id] || []).map(a => a.email),
         ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
       ],
-      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [], docMap[impl.id] || [],
+      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [], docMap[impl.id] || [], metricMap[impl.id] || [],
     ))
   } catch (e) { return fail(e) }
 }
@@ -393,6 +421,18 @@ export async function updateUsageLimit(_token, implementationId, field, value) {
   if (!['profile_limit', 'event_limit'].includes(field)) return { error: 'Invalid limit field' }
   const { error } = await supabase.from('implementations')
     .update({ [field]: value }).eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+// Upsert one billing meter's usage and/or limit. Pass null to clear a field.
+export async function upsertUsageMetric(_token, implementationId, metricKey, { value, limit }) {
+  const { error } = await supabase.from('usage_metrics').upsert({
+    implementation_id: implementationId,
+    metric_key: metricKey,
+    usage_value: value ?? null,
+    usage_limit: limit ?? null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'implementation_id,metric_key' })
   return error ? fail(error) : { ok: true }
 }
 

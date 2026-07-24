@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllImplementations } from '../api'
+import { getAllImplementations, USAGE_METERS } from '../api'
 import Navbar from '../components/Navbar'
 
 function fmt(n) {
@@ -11,19 +11,6 @@ function formatDateTime(val) {
   if (!val) return '—'
   const d = new Date(val)
   return isNaN(d) ? '—' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-// The client's billing meter and its usage/limit.
-function activeUsage(impl) {
-  const onEvents = impl.pricingModel === 'events'
-  return {
-    meter: onEvents ? 'events' : 'profiles',
-    count: onEvents ? impl.eventCount : impl.profileCount,
-    limit: onEvents ? impl.eventLimit : impl.profileLimit,
-    syncedAt: onEvents ? impl.eventCountSyncedAt : impl.profileCountSyncedAt,
-    otherLabel: onEvents ? 'profiles' : 'events',
-    otherCount: onEvents ? impl.profileCount : impl.eventCount,
-  }
 }
 
 // Status band by utilisation — reserved status colors, always shown with the % number.
@@ -44,13 +31,13 @@ function Tile({ value, label, warn }) {
   )
 }
 
-const METERS = [['all', 'All'], ['profiles', 'Profiles'], ['events', 'Events']]
+const MODEL_FILTERS = [['all', 'All'], ['profiles', 'Profiles'], ['events', 'Events']]
 
 export default function Analytics({ credential, userInfo, onLogout }) {
   const [implementations, setImplementations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [meterFilter, setMeterFilter] = useState('all')
+  const [modelFilter, setModelFilter] = useState('all')
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -65,27 +52,30 @@ export default function Analytics({ credential, userInfo, onLogout }) {
   const linked = implementations.filter(i => i.bloomreachOrgId)
   const unlinkedCount = implementations.length - linked.length
 
-  // Build one row per linked client, with its active-meter usage + utilisation.
-  const rows = linked.map(impl => {
-    const u = activeUsage(impl)
-    const pct = (u.count !== null && u.count !== undefined && u.limit)
-      ? Math.round((Number(u.count) / Number(u.limit)) * 100)
-      : null
-    return { impl, ...u, pct }
-  })
+  // One row per (client, billing meter). Each client contributes its model's two meters.
+  const rows = []
+  for (const impl of linked) {
+    const model = impl.pricingModel || 'profiles'
+    for (const meter of USAGE_METERS[model]) {
+      const m = (impl.usageMetrics || {})[meter.key] || {}
+      const value = m.value ?? null
+      const limit = m.limit ?? null
+      const pct = (value !== null && limit) ? Math.round((Number(value) / Number(limit)) * 100) : null
+      rows.push({ impl, model, meterLabel: meter.label, value, limit, pct, updatedAt: m.updatedAt })
+    }
+  }
 
-  const filtered = meterFilter === 'all' ? rows : rows.filter(r => r.meter === meterFilter)
+  const filtered = modelFilter === 'all' ? rows : rows.filter(r => r.model === modelFilter)
 
-  // Sort: highest utilisation first; rows without a % (no limit/data) after, by count desc.
+  // Highest utilisation first; rows with no % (no limit/usage) after, by usage desc.
   const sorted = [...filtered].sort((a, b) => {
-    if (a.pct === null && b.pct === null) return (Number(b.count) || 0) - (Number(a.count) || 0)
+    if (a.pct === null && b.pct === null) return (Number(b.value) || 0) - (Number(a.value) || 0)
     if (a.pct === null) return 1
     if (b.pct === null) return -1
     return b.pct - a.pct
   })
 
-  const totalProfiles = linked.reduce((s, i) => s + (Number(i.profileCount) || 0), 0)
-  const totalEvents = linked.reduce((s, i) => s + (Number(i.eventCount) || 0), 0)
+  const metersTracked = rows.filter(r => r.limit).length
   const nearLimit = rows.filter(r => r.pct !== null && r.pct >= 85 && r.pct < 100).length
   const overLimit = rows.filter(r => r.pct !== null && r.pct >= 100).length
 
@@ -98,7 +88,7 @@ export default function Analytics({ credential, userInfo, onLogout }) {
           <div>
             <h1 className="font-display text-xl font-semibold" style={{ color: 'var(--ink)' }}>Usage Analytics</h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
-              Profile and event usage across all linked implementations, against contracted limits.
+              Every client's billing meters against their contracted limits — PE &amp; MES for events, Billable Profiles &amp; MUV for profiles.
             </p>
           </div>
           <Link
@@ -116,23 +106,20 @@ export default function Analytics({ credential, userInfo, onLogout }) {
           <div className="text-center py-20 text-sm" style={{ color: 'var(--rust)' }}>{error}</div>
         ) : (
           <>
-            {/* KPI tiles */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
               <Tile value={linked.length} label="Linked clients" />
-              <Tile value={fmt(totalProfiles)} label="Total profiles" />
-              <Tile value={fmt(totalEvents)} label="Total events" />
+              <Tile value={metersTracked} label="Meters with a limit" />
               <Tile value={nearLimit} label="Near limit (≥85%)" warn={nearLimit > 0} />
               <Tile value={overLimit} label="Over limit" warn={overLimit > 0} />
             </div>
 
-            {/* Meter filter */}
             <div className="flex items-center gap-2 mb-4">
-              {METERS.map(([key, label]) => (
+              {MODEL_FILTERS.map(([key, label]) => (
                 <button
                   key={key}
-                  onClick={() => setMeterFilter(key)}
+                  onClick={() => setModelFilter(key)}
                   className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
-                  style={meterFilter === key
+                  style={modelFilter === key
                     ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' }
                     : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}
                 >
@@ -141,40 +128,36 @@ export default function Analytics({ credential, userInfo, onLogout }) {
               ))}
             </div>
 
-            {/* Utilisation table */}
             <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid var(--hairline)' }}>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: '720px' }}>
+                <table className="w-full text-sm" style={{ minWidth: '760px' }}>
                   <thead style={{ background: 'var(--paper)', borderBottom: '1px solid var(--hairline)' }}>
                     <tr>
-                      {['Partner / Client', 'Meter', 'Usage', 'Utilisation', 'Synced'].map(h => (
+                      {['Partner / Client', 'Meter', 'Usage / Limit', 'Utilisation', 'Updated'].map(h => (
                         <th key={h} className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y" style={{ borderColor: 'var(--paper)' }}>
-                    {sorted.map(r => {
+                    {sorted.map((r, i) => {
                       const b = band(r.pct)
                       return (
-                        <tr key={r.impl.id} className="hover:bg-[var(--paper)] transition-colors">
+                        <tr key={r.impl.id + r.meterLabel} className="hover:bg-[var(--paper)] transition-colors">
                           <td className="px-5 py-4">
                             <div className="font-medium" style={{ color: 'var(--ink)' }}>{r.impl.client_name}</div>
                             <div className="text-xs" style={{ color: 'var(--muted)' }}>{r.impl.partner_name}</div>
                           </td>
                           <td className="px-5 py-4">
                             <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
-                              {r.meter === 'events' ? 'Events' : 'Profiles'}
+                              {r.meterLabel}
                             </span>
                           </td>
-                          <td className="px-5 py-4">
-                            <div className="font-mono" style={{ color: 'var(--ink)' }}>
-                              {fmt(r.count)}{r.limit ? <span style={{ color: 'var(--muted)' }}> / {fmt(r.limit)}</span> : ''}
-                            </div>
-                            <div className="text-xs" style={{ color: 'var(--muted)' }}>{fmt(r.otherCount)} {r.otherLabel}</div>
+                          <td className="px-5 py-4 font-mono" style={{ color: 'var(--ink)' }}>
+                            {fmt(r.value)}{r.limit ? <span style={{ color: 'var(--muted)' }}> / {fmt(r.limit)}</span> : ''}
                           </td>
-                          <td className="px-5 py-4" style={{ minWidth: '160px' }}>
+                          <td className="px-5 py-4" style={{ minWidth: '170px' }}>
                             {r.pct === null ? (
-                              <span className="text-xs" style={{ color: 'var(--muted)' }}>{r.limit ? '—' : 'no limit set'}</span>
+                              <span className="text-xs" style={{ color: 'var(--muted)' }}>{r.limit ? 'no usage yet' : 'no limit set'}</span>
                             ) : (
                               <div>
                                 <div className="flex items-center gap-2">
@@ -187,13 +170,13 @@ export default function Analytics({ credential, userInfo, onLogout }) {
                               </div>
                             )}
                           </td>
-                          <td className="px-5 py-4 text-xs" style={{ color: 'var(--muted)' }}>{formatDateTime(r.syncedAt)}</td>
+                          <td className="px-5 py-4 text-xs" style={{ color: 'var(--muted)' }}>{formatDateTime(r.updatedAt)}</td>
                         </tr>
                       )
                     })}
                     {sorted.length === 0 && (
                       <tr><td colSpan={5} className="px-5 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                        No linked implementations{meterFilter !== 'all' ? ` on the ${meterFilter} meter` : ''} yet.
+                        No {modelFilter !== 'all' ? modelFilter + '-model ' : ''}meters recorded yet — set limits in the Control Centre.
                       </td></tr>
                     )}
                   </tbody>
@@ -203,11 +186,11 @@ export default function Analytics({ credential, userInfo, onLogout }) {
 
             {unlinkedCount > 0 && (
               <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
-                {unlinkedCount} implementation{unlinkedCount === 1 ? '' : 's'} not linked to a Bloomreach org — no usage data, not shown.
+                {unlinkedCount} implementation{unlinkedCount === 1 ? '' : 's'} not linked to a Bloomreach org — not shown.
               </p>
             )}
             <p className="text-xs mt-2 italic" style={{ color: 'var(--muted)' }}>
-              Indicative usage from Engagement, not billed figures — profiles count all profiles (not just billable), events are cumulative stored (not monthly processed).
+              Usage and limits are entered manually from the order form and the Bloomreach usage dashboard — these billing meters aren't exposed by the API.
             </p>
           </>
         )}

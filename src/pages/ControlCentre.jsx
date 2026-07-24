@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllImplementations, addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, getStepDefinitions, updatePricingModel, updateUsageLimit } from '../api'
+import { getAllImplementations, addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, getStepDefinitions, updatePricingModel, upsertUsageMetric, USAGE_METERS } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
 import ProgressRing from '../components/ProgressRing'
@@ -42,6 +42,69 @@ function pct(stepMap, keys) {
 
 const EMPTY_NOTE = { title: '', meeting_date: new Date().toISOString().slice(0, 10), content: '' }
 
+function fmt(n) {
+  return n === null || n === undefined ? '—' : Number(n).toLocaleString()
+}
+
+// Edits one billing meter: current usage + contracted limit, with a utilisation bar.
+function MeterEditor({ meter, data, onSave }) {
+  const [usage, setUsage] = useState(data?.value ?? '')
+  const [limit, setLimit] = useState(data?.limit ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    setUsage(data?.value ?? '')
+    setLimit(data?.limit ?? '')
+  }, [data?.value, data?.limit])
+
+  const pctVal = (usage !== '' && limit !== '' && Number(limit) > 0)
+    ? Math.round((Number(usage) / Number(limit)) * 100) : null
+  const color = pctVal === null ? 'var(--muted)'
+    : pctVal >= 100 ? 'var(--rust)' : pctVal >= 85 ? 'var(--gold)' : 'var(--moss)'
+
+  async function save(e) {
+    e.preventDefault()
+    setSaving(true)
+    const res = await onSave(usage === '' ? null : Number(usage), limit === '' ? null : Number(limit))
+    setSaving(false)
+    if (!res?.error) { setSaved(true); setTimeout(() => setSaved(false), 1500) }
+  }
+
+  return (
+    <form onSubmit={save} className="rounded-lg p-3" style={{ border: '1px solid var(--hairline)' }}>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{meter.label}</span>
+        <span className="text-[10px]" style={{ color: 'var(--muted)' }}>{meter.hint}</span>
+      </div>
+      <div className="flex items-end gap-2 flex-wrap">
+        <label className="flex flex-col">
+          <span className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>Usage</span>
+          <input type="number" min="0" value={usage} onChange={e => setUsage(e.target.value)} placeholder="—"
+            className="w-32 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+        </label>
+        <span className="pb-2" style={{ color: 'var(--muted)' }}>/</span>
+        <label className="flex flex-col">
+          <span className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>Limit</span>
+          <input type="number" min="0" value={limit} onChange={e => setLimit(e.target.value)} placeholder="—"
+            className="w-32 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+        </label>
+        <button type="submit" disabled={saving} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
+          {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+        </button>
+      </div>
+      {pctVal !== null && (
+        <div className="mt-2">
+          <span className="font-mono text-[11px]" style={{ color }}>{pctVal}% of limit</span>
+          <div className="mt-1 h-1.5 w-full max-w-xs rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
+            <div className="h-full rounded-full" style={{ width: `${Math.min(pctVal, 100)}%`, background: color }} />
+          </div>
+        </div>
+      )}
+    </form>
+  )
+}
+
 export default function ControlCentre({ credential, userInfo, onLogout }) {
   const [stepDefs, setStepDefs] = useState(null)
   useEffect(() => { getStepDefinitions().then(setStepDefs).catch(() => {}) }, [])
@@ -63,8 +126,6 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
   const [orgLinkInput, setOrgLinkInput] = useState({ orgId: '', orgName: '' })
   const [savingOrgLink, setSavingOrgLink] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
-  const [limitDraft, setLimitDraft] = useState('')
-  const [savingLimit, setSavingLimit] = useState(false)
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -82,13 +143,6 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
 
   const selected = implementations.find(i => i.id === selectedId) || null
 
-  // Keep the limit field in step with the selected client's active meter.
-  useEffect(() => {
-    if (!selected) { setLimitDraft(''); return }
-    const m = selected.pricingModel || 'profiles'
-    setLimitDraft((m === 'events' ? selected.eventLimit : selected.profileLimit) ?? '')
-  }, [selectedId, selected?.pricingModel, selected?.profileLimit, selected?.eventLimit])
-
   function patchSelected(fields) {
     setImplementations(prev => prev.map(impl => (impl.id === selectedId ? { ...impl, ...fields } : impl)))
   }
@@ -100,16 +154,15 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
     setSavingPricing(false)
   }
 
-  async function handleSaveLimit(e) {
-    e.preventDefault()
-    const model = selected.pricingModel || 'profiles'
-    const field = model === 'events' ? 'event_limit' : 'profile_limit'
-    const stateKey = model === 'events' ? 'eventLimit' : 'profileLimit'
-    const value = limitDraft === '' ? null : Number(limitDraft)
-    setSavingLimit(true)
-    const res = await updateUsageLimit(credential, selectedId, field, value)
-    if (!res.error) patchSelected({ [stateKey]: value })
-    setSavingLimit(false)
+  // Save one billing meter; merge the result into the selected client's usageMetrics.
+  async function saveMetric(metricKey, value, limit) {
+    const res = await upsertUsageMetric(credential, selectedId, metricKey, { value, limit })
+    if (!res.error) {
+      patchSelected({
+        usageMetrics: { ...(selected.usageMetrics || {}), [metricKey]: { value, limit, updatedAt: new Date().toISOString() } },
+      })
+    }
+    return res
   }
 
   const filtered = implementations.filter(i => {
@@ -327,65 +380,11 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                             {selected.bloomreachOrgName}
                             <span className="font-mono text-xs ml-2" style={{ color: 'var(--muted)' }}>{selected.bloomreachOrgId}</span>
                           </div>
-                          {(() => {
-                            // Lead with the metric this client is billed on.
-                            const onEvents = selected.pricingModel === 'events'
-                            const primary = onEvents
-                              ? { value: selected.eventCount, unit: 'events', at: selected.eventCountSyncedAt, limit: selected.eventLimit }
-                              : { value: selected.profileCount, unit: 'profiles', at: selected.profileCountSyncedAt, limit: selected.profileLimit }
-                            const secondary = onEvents
-                              ? { value: selected.profileCount, unit: 'profiles' }
-                              : { value: selected.eventCount, unit: 'events' }
-                            const has = v => v !== null && v !== undefined
-                            if (!has(primary.value) && !has(secondary.value)) return null
-                            const pct = has(primary.value) && primary.limit
-                              ? Math.round((Number(primary.value) / Number(primary.limit)) * 100)
-                              : null
-                            const barColor = pct === null ? 'var(--arctic)'
-                              : pct >= 100 ? 'var(--rust)' : pct >= 85 ? 'var(--gold)' : 'var(--moss)'
-                            return (
-                              <div className="text-xs mt-2" style={{ color: 'var(--muted)' }}>
-                                {has(primary.value) && (
-                                  <>
-                                    <span className="font-mono font-semibold" style={{ color: 'var(--arctic)' }}>
-                                      {Number(primary.value).toLocaleString()}
-                                    </span>
-                                    {primary.limit && (
-                                      <span> / <span className="font-mono">{Number(primary.limit).toLocaleString()}</span></span>
-                                    )} {primary.unit}
-                                    {pct !== null && (
-                                      <span className="font-mono ml-1" style={{ color: barColor }}>· {pct}%</span>
-                                    )}
-                                    <span
-                                      className="ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] font-medium"
-                                      style={{ background: 'var(--paper)', color: 'var(--muted)' }}
-                                      title="This client's billing meter"
-                                    >billing meter</span>
-                                  </>
-                                )}
-                                {pct !== null && (
-                                  <div className="mt-1.5 h-1.5 w-full max-w-xs rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
-                                    <div className="h-full rounded-full" style={{ width: `${Math.min(pct, 100)}%`, background: barColor }} />
-                                  </div>
-                                )}
-                                {has(secondary.value) && (
-                                  <span className="block mt-1">{Number(secondary.value).toLocaleString()} {secondary.unit}</span>
-                                )}
-                                {primary.at && <span className="block">synced {formatDateTime(primary.at)}</span>}
-                                <div className="mt-1 italic">
-                                  Indicative usage from Engagement, not the billed figure —
-                                  {onEvents
-                                    ? ' events shown are cumulative stored, not monthly processed.'
-                                    : ' counts all profiles, not just billable ones.'}
-                                </div>
-                              </div>
-                            )
-                          })()}
 
-                          {/* Billing meter + contracted limit */}
+                          {/* Billing meters — usage & contracted limit per meter */}
                           <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--hairline)' }}>
-                            <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Billing meter</p>
-                            <div className="flex gap-2">
+                            <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Billing model</p>
+                            <div className="flex gap-2 mb-3">
                               {[['profiles', 'Profiles'], ['events', 'Events']].map(([value, label]) => {
                                 const active = (selected.pricingModel || 'profiles') === value
                                 return (
@@ -403,30 +402,25 @@ export default function ControlCentre({ credential, userInfo, onLogout }) {
                                 )
                               })}
                             </div>
-                            <form onSubmit={handleSaveLimit} className="mt-2.5">
-                              <label className="block text-[10px] font-medium uppercase tracking-widest mb-1" style={{ color: 'var(--muted)' }}>
-                                Contracted {(selected.pricingModel || 'profiles') === 'events' ? 'events' : 'profiles'} limit
-                              </label>
-                              <div className="flex gap-2 max-w-xs">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={limitDraft}
-                                  onChange={e => setLimitDraft(e.target.value)}
-                                  placeholder="e.g. 100000 · blank for none"
-                                  className="flex-1 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none"
-                                  style={{ border: '1px solid var(--hairline)' }}
+                            <div className="space-y-3">
+                              {(USAGE_METERS[selected.pricingModel || 'profiles']).map(meter => (
+                                <MeterEditor
+                                  key={meter.key}
+                                  meter={meter}
+                                  data={(selected.usageMetrics || {})[meter.key]}
+                                  onSave={(value, limit) => saveMetric(meter.key, value, limit)}
                                 />
-                                <button
-                                  type="submit"
-                                  disabled={savingLimit}
-                                  className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50"
-                                  style={{ background: 'var(--gold)' }}
-                                >
-                                  {savingLimit ? 'Saving…' : 'Save'}
-                                </button>
-                              </div>
-                            </form>
+                              ))}
+                            </div>
+                            <p className="text-[11px] mt-3 italic" style={{ color: 'var(--muted)' }}>
+                              Enter from the order form (limit) and usage dashboard (usage) — these meters aren't available via the API.
+                              {(selected.profileCount !== null && selected.profileCount !== undefined) || (selected.eventCount !== null && selected.eventCount !== undefined) ? (
+                                <span className="block mt-0.5">
+                                  Live (indicative): {fmt(selected.profileCount)} profiles · {fmt(selected.eventCount)} events
+                                  {selected.profileCountSyncedAt && <span> · synced {formatDateTime(selected.profileCountSyncedAt)}</span>}
+                                </span>
+                              ) : null}
+                            </p>
                           </div>
                         </div>
                       ) : (
