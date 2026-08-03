@@ -116,7 +116,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const activeImpls = implementations.filter(i => i.status !== 'complete')
   const completedImpls = implementations.filter(i => i.status === 'complete')
   const partners = Array.from(new Set(activeImpls.map(i => i.partner_name).filter(Boolean))).sort()
-  const avgProgress = activeImpls.length ? Math.round(activeImpls.reduce((sum, i) => sum + getProgress(i, tpKeys), 0) / activeImpls.length) : 0
   const avgQA = activeImpls.length ? Math.round(activeImpls.reduce((sum, i) => sum + getQAProgress(i, qaKeys), 0) / activeImpls.length) : 0
   const totalOpenRaid = implementations.reduce((sum, i) => sum + openRaidCount(i), 0)
   const overdueCount = activeImpls.filter(isOverdue).length
@@ -293,7 +292,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
               {[
                 { label: 'Active', value: activeImpls.length },
-                { label: 'Avg Progress', value: `${avgProgress}%` },
                 { label: 'Avg QA', value: `${avgQA}%` },
               ].map(s => (
                 <div key={s.label} className="bg-white rounded-2xl relative overflow-hidden" style={{ border: '1px solid var(--hairline)', padding: '18px 20px' }}>
