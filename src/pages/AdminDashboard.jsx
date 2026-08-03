@@ -21,6 +21,15 @@ function getQAProgress(impl, qaKeys) {
   return Math.round((complete / qaKeys.length) * 100)
 }
 
+function openRaidCount(impl) {
+  return (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
+}
+
+function isOverdue(impl) {
+  if (!impl.planned_completion_date) return false
+  return new Date(impl.planned_completion_date) < new Date()
+}
+
 const EMPTY_FORM = { emails: '', partner_name: '', client_name: '', slackChannelId: '' }
 
 export default function AdminDashboard({ credential, userInfo, onLogout }) {
@@ -104,13 +113,30 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
     setAdding(false)
   }
 
+  const activeImpls = implementations.filter(i => i.status !== 'complete')
+  const completedImpls = implementations.filter(i => i.status === 'complete')
+  const partners = Array.from(new Set(activeImpls.map(i => i.partner_name).filter(Boolean))).sort()
+  const avgProgress = activeImpls.length ? Math.round(activeImpls.reduce((sum, i) => sum + getProgress(i, tpKeys), 0) / activeImpls.length) : 0
+  const avgQA = activeImpls.length ? Math.round(activeImpls.reduce((sum, i) => sum + getQAProgress(i, qaKeys), 0) / activeImpls.length) : 0
+  const totalOpenRaid = implementations.reduce((sum, i) => sum + openRaidCount(i), 0)
+  const overdueCount = activeImpls.filter(isOverdue).length
+  const hasAttention = overdueCount > 0 || totalOpenRaid > 0
+
+  const filteredActive = partnerFilter === 'All' ? activeImpls : activeImpls.filter(i => i.partner_name === partnerFilter)
+  const groupNames = partnerFilter === 'All' ? partners : [partnerFilter]
+  const partnerGroups = groupNames.map(name => {
+    const impls = filteredActive.filter(i => i.partner_name === name)
+    const avg = impls.length ? Math.round(impls.reduce((sum, i) => sum + getProgress(i, tpKeys), 0) / impls.length) : 0
+    return { name, impls, avg }
+  }).filter(g => g.impls.length > 0)
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
       <div className="no-print">
         <Navbar userInfo={userInfo} onLogout={onLogout} title="Admin — Partner Portal" />
       </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-7 py-7">
 
         {/* Print-only header, shown when exported to PDF */}
         <div className="print-only mb-6">
@@ -119,38 +145,31 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
         </div>
 
         {/* Header */}
-        <div className="no-print flex items-center justify-between mb-6">
+        <div className="no-print flex items-center justify-between mb-5 flex-wrap gap-3">
           <div>
-            <h1 className="font-display text-xl font-semibold" style={{ color: 'var(--ink)' }}>All Implementations</h1>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
-              {implementations.filter(i => i.status !== 'complete').length} active implementation{implementations.filter(i => i.status !== 'complete').length !== 1 ? 's' : ''}
+            <h1 className="font-display text-[22px] font-semibold" style={{ color: 'var(--ink)' }}>All Implementations</h1>
+            <p className="text-[13px] mt-1" style={{ color: 'var(--muted)' }}>
+              {activeImpls.length} active implementation{activeImpls.length !== 1 ? 's' : ''} across {partners.length} partner{partners.length !== 1 ? 's' : ''}
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2.5">
             <Link
               to="/admin/analytics"
-              className="no-print text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
               style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
             >
               Analytics
             </Link>
-            <Link
-              to="/admin/control-centre"
-              className="no-print text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
-            >
-              Control Centre
-            </Link>
             <button
               onClick={() => window.print()}
-              className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+              className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
+              style={{ border: '1px solid var(--hairline)', background: '#fff', color: 'var(--ink)' }}
             >
               Export to PDF
             </button>
             <button
               onClick={() => { setShowAdd(v => !v); setAddError(null) }}
-              className="text-black text-sm font-medium px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
+              className="text-black text-sm font-semibold px-4 py-2 rounded-[10px] transition-opacity hover:opacity-90"
               style={{ background: 'var(--gold)' }}
             >
               + Add implementation
@@ -160,7 +179,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 
         {/* Pending sign-ups awaiting approval */}
         {pending.length > 0 && (
-          <div className="no-print bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--gold)' }}>
+          <div className="no-print bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--gold)' }}>
             <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>
               Pending sign-ups <span className="font-mono text-sm" style={{ color: 'var(--muted)' }}>({pending.length})</span>
             </h2>
@@ -175,49 +194,9 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           </div>
         )}
 
-        {/* Summary stats */}
-        {!loading && !error && implementations.length > 0 && (() => {
-          const activeImpls = implementations.filter(i => i.status !== 'complete')
-          const completeCount = implementations.length - activeImpls.length
-          const avgProgress = activeImpls.length
-            ? Math.round(activeImpls.reduce((sum, i) => sum + getProgress(i, tpKeys), 0) / activeImpls.length)
-            : 0
-          const avgQA = activeImpls.length
-            ? Math.round(activeImpls.reduce((sum, i) => sum + getQAProgress(i, qaKeys), 0) / activeImpls.length)
-            : 0
-          const totalOpenRaid = implementations.reduce(
-            (sum, i) => sum + (i.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length, 0
-          )
-          const overdueCount = activeImpls.filter(i => {
-            if (!i.planned_completion_date) return false
-            return new Date(i.planned_completion_date) < new Date()
-          }).length
-
-          const stats = [
-            { label: 'Active', value: activeImpls.length },
-            { label: 'Complete', value: completeCount },
-            { label: 'Avg Progress', value: `${avgProgress}%` },
-            { label: 'Avg QA', value: `${avgQA}%` },
-            { label: 'Open RAID', value: totalOpenRaid, warn: totalOpenRaid > 0 },
-            { label: 'Overdue', value: overdueCount, warn: overdueCount > 0 },
-          ]
-
-          return (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
-              {stats.map(s => (
-                <div key={s.label} className="bg-white rounded-2xl p-4 relative overflow-hidden" style={{ border: '1px solid var(--hairline)' }}>
-                  <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: s.warn ? 'var(--rust)' : 'var(--gold)' }} />
-                  <p className="font-mono text-2xl font-semibold" style={{ color: s.warn ? 'var(--rust)' : 'var(--ink)' }}>{s.value}</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{s.label}</p>
-                </div>
-              ))}
-            </div>
-          )
-        })()}
-
         {/* Add partner form */}
         {showAdd && (
-          <div className="no-print bg-white rounded-2xl p-6 mb-6" style={{ border: '1px solid var(--hairline)' }}>
+          <div className="no-print bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--hairline)' }}>
             <h2 className="font-display text-base font-semibold mb-4" style={{ color: 'var(--ink)' }}>Add new partner implementation</h2>
             <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div>
@@ -239,7 +218,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   required
                   value={form.partner_name}
                   onChange={e => setForm(f => ({ ...f, partner_name: e.target.value }))}
-                  placeholder=""
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ border: '1px solid var(--hairline)' }}
                 />
@@ -251,7 +229,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   required
                   value={form.client_name}
                   onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
-                  placeholder=""
                   className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                   style={{ border: '1px solid var(--hairline)' }}
                 />
@@ -292,7 +269,6 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           </div>
         )}
 
-        {/* Table */}
         {loading ? (
           <div className="text-center py-20 text-sm" style={{ color: 'var(--muted)' }}>Loading…</div>
         ) : error ? (
@@ -301,20 +277,54 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           <div className="bg-white rounded-2xl p-12 text-center text-sm" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
             No implementations yet. Add a partner above to get started.
           </div>
-        ) : (() => {
-          const activeImpls = implementations.filter(i => i.status !== 'complete')
-          const completedImpls = implementations.filter(i => i.status === 'complete')
-          const partners = ['All', ...Array.from(new Set(activeImpls.map(i => i.partner_name).filter(Boolean))).sort()]
-          const filtered = partnerFilter === 'All' ? activeImpls : activeImpls.filter(i => i.partner_name === partnerFilter)
-          return (
+        ) : (
           <>
+            {/* Attention strip */}
+            {hasAttention && (
+              <div className="no-print flex items-center gap-3 rounded-2xl mb-5" style={{ background: '#fbeee9', border: '1px solid #f0c9ba', padding: '14px 18px' }}>
+                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'var(--rust)' }} />
+                <p className="text-[13.5px] font-medium m-0" style={{ color: '#8a3018' }}>
+                  {overdueCount} overdue implementation{overdueCount !== 1 ? 's' : ''} · {totalOpenRaid} open RAID item{totalOpenRaid !== 1 ? 's' : ''} need attention
+                </p>
+              </div>
+            )}
+
+            {/* Primary stats */}
+            <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+              {[
+                { label: 'Active', value: activeImpls.length },
+                { label: 'Avg Progress', value: `${avgProgress}%` },
+                { label: 'Avg QA', value: `${avgQA}%` },
+              ].map(s => (
+                <div key={s.label} className="bg-white rounded-2xl relative overflow-hidden" style={{ border: '1px solid var(--hairline)', padding: '18px 20px' }}>
+                  <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'var(--gold)' }} />
+                  <p className="font-mono text-[32px] font-semibold leading-none" style={{ color: 'var(--ink)' }}>{s.value}</p>
+                  <p className="text-[12.5px] mt-1.5" style={{ color: 'var(--muted)' }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Secondary stats */}
+            <div className="grid gap-2.5 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
+              {[
+                { label: 'Complete', value: completedImpls.length, warn: false },
+                { label: 'Open RAID', value: totalOpenRaid, warn: totalOpenRaid > 0 },
+                { label: 'Overdue', value: overdueCount, warn: overdueCount > 0 },
+              ].map(s => (
+                <div key={s.label} className="bg-white rounded-xl flex items-center justify-between" style={{ border: '1px solid var(--hairline)', padding: '12px 16px' }}>
+                  <span className="text-[12.5px]" style={{ color: 'var(--muted)' }}>{s.label}</span>
+                  <span className="font-mono text-[15px] font-semibold" style={{ color: s.warn ? 'var(--rust)' : 'var(--ink)' }}>{s.value}</span>
+                </div>
+              ))}
+            </div>
+
             {/* Partner filter chips */}
-            <div className="no-print flex items-center gap-2 mb-4 flex-wrap">
-              {partners.map(p => (
+            <div className="no-print flex items-center gap-2 mb-5 flex-wrap">
+              {['All', ...partners].map(p => (
                 <button
                   key={p}
                   onClick={() => setPartnerFilter(p)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+                  className="text-[12.5px] font-medium px-3.5 py-1.5 rounded-full transition-colors"
                   style={partnerFilter === p
                     ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' }
                     : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}
@@ -322,22 +332,35 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   {p}
                 </button>
               ))}
-              {partnerFilter !== 'All' && (
-                <span className="text-xs ml-1" style={{ color: 'var(--muted)' }}>{filtered.length} implementation{filtered.length !== 1 ? 's' : ''}</span>
-              )}
             </div>
 
-            {filtered.length === 0 ? (
+            {/* Partner-grouped implementation cards */}
+            {partnerGroups.length === 0 ? (
               <div className="bg-white rounded-2xl p-12 text-center text-sm mb-6" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
                 No active implementations{partnerFilter !== 'All' ? ` for ${partnerFilter}` : ''}.
               </div>
             ) : (
-              <ImplTable items={filtered} tpKeys={tpKeys} qaKeys={qaKeys} />
+              partnerGroups.map(group => (
+                <div key={group.name} className="mb-8">
+                  <div className="flex items-baseline justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                      <h3 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>{group.name}</h3>
+                      <span className="text-xs" style={{ color: 'var(--muted)' }}>{group.impls.length} implementation{group.impls.length !== 1 ? 's' : ''}</span>
+                    </div>
+                    <span className="font-mono text-xs" style={{ color: 'var(--muted)' }}>avg progress {group.avg}%</span>
+                  </div>
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                    {group.impls.map(impl => (
+                      <ImplCard key={impl.id} impl={impl} tpKeys={tpKeys} qaKeys={qaKeys} />
+                    ))}
+                  </div>
+                </div>
+              ))
             )}
 
             {/* Completed — collapsed by default */}
             {completedImpls.length > 0 && (
-              <div className="mt-6">
+              <div>
                 <button
                   onClick={() => setShowCompleted(v => !v)}
                   className="no-print flex items-center gap-2 text-sm font-medium hover:opacity-70"
@@ -347,16 +370,80 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   Completed ({completedImpls.length})
                 </button>
                 {showCompleted && (
-                  <div className="mt-3">
-                    <ImplTable items={completedImpls} tpKeys={tpKeys} qaKeys={qaKeys} />
+                  <div className="grid gap-3 mt-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                    {completedImpls.map(impl => (
+                      <CompletedCard key={impl.id} impl={impl} />
+                    ))}
                   </div>
                 )}
               </div>
             )}
           </>
-        )})()}
+        )}
       </div>
     </div>
+  )
+}
+
+function ImplCard({ impl, tpKeys, qaKeys }) {
+  const tpDone = tpKeys.filter(k => (impl.touchPoints || {})[k] === 'complete').length
+  const qaDone = qaKeys.filter(k => (impl.qaSteps || {})[k] === 'complete').length
+  const progress = getProgress(impl, tpKeys)
+  const qa = getQAProgress(impl, qaKeys)
+  const openRaid = openRaidCount(impl)
+  return (
+    <Link
+      to={`/admin/implementation/${impl.id}`}
+      className="block bg-white rounded-2xl p-4 transition-shadow"
+      style={{ border: '1px solid var(--hairline)' }}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 18px rgba(10,10,10,0.08)' }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</span>
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: impl.status === 'complete' ? 'var(--moss-bg)' : 'var(--paper)', color: impl.status === 'complete' ? 'var(--moss)' : 'var(--muted)' }}>
+          {impl.status === 'complete' ? 'Complete' : 'Active'}
+        </span>
+      </div>
+      {openRaid > 0 && (
+        <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded" style={{ background: 'var(--rust-bg)', color: 'var(--rust)' }}>
+          {openRaid} open RAID
+        </span>
+      )}
+      <div className="mt-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>Progress</span>
+          <span className="font-mono text-[11.5px]" style={{ color: 'var(--muted)' }}>{progress}%</span>
+        </div>
+        <RolloutRail total={tpKeys.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
+      </div>
+      <div className="mt-2.5">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>QA</span>
+          <span className="font-mono text-[11.5px]" style={{ color: 'var(--muted)' }}>{qa}%</span>
+        </div>
+        <RolloutRail total={qaKeys.length} completed={qaDone} color={qa === 100 ? 'var(--moss)' : 'var(--arctic)'} size="sm" />
+      </div>
+      <div className="flex justify-end mt-3">
+        <span className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>View →</span>
+      </div>
+    </Link>
+  )
+}
+
+function CompletedCard({ impl }) {
+  return (
+    <Link
+      to={`/admin/implementation/${impl.id}`}
+      className="block bg-white rounded-2xl p-4"
+      style={{ border: '1px solid var(--hairline)', opacity: 0.85 }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</span>
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--moss-bg)', color: 'var(--moss)' }}>Complete</span>
+      </div>
+      <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{impl.partner_name}</div>
+    </Link>
   )
 }
 
@@ -434,72 +521,6 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
         Decline
       </button>
       {error && <span className="text-xs" style={{ color: 'var(--rust)' }}>{error}</span>}
-    </div>
-  )
-}
-
-function ImplTable({ items, tpKeys, qaKeys }) {
-  return (
-    <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid var(--hairline)' }}>
-      <table className="w-full text-sm">
-        <thead style={{ background: 'var(--paper)', borderBottom: '1px solid var(--hairline)' }}>
-          <tr>
-            <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Partner / Client</th>
-            <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Progress</th>
-            <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>QA</th>
-            <th className="no-print px-5 py-3"></th>
-          </tr>
-        </thead>
-        <tbody className="divide-y" style={{ borderColor: 'var(--paper)' }}>
-          {items.map(impl => {
-            const tpDone = tpKeys.filter(k => (impl.touchPoints || {})[k] === 'complete').length
-            const qaDone = qaKeys.filter(k => (impl.qaSteps || {})[k] === 'complete').length
-            const progress = getProgress(impl, tpKeys)
-            const qa = getQAProgress(impl, qaKeys)
-            const openRaid = (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
-            return (
-              <tr key={impl.id} className="hover:bg-[var(--paper)] transition-colors">
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-2">
-                    <div className="font-medium" style={{ color: 'var(--ink)' }}>{impl.client_name}</div>
-                    <span className="text-xs font-medium px-1.5 py-0.5 rounded-full" style={{ background: impl.status === 'complete' ? 'var(--moss-bg)' : 'var(--paper)', color: impl.status === 'complete' ? 'var(--moss)' : 'var(--muted)' }}>
-                      {impl.status === 'complete' ? 'Complete' : 'Active'}
-                    </span>
-                  </div>
-                  <div className="text-xs" style={{ color: 'var(--muted)' }}>{impl.partner_name}</div>
-                  <div className="text-xs" style={{ color: 'var(--muted)' }}>{(impl.accessEmails || []).join(', ')}</div>
-                  {openRaid > 0 && (
-                    <span className="inline-block mt-1 text-xs px-1.5 py-0.5 rounded" style={{ background: 'var(--rust-bg)', color: 'var(--rust)' }}>
-                      {openRaid} open RAID
-                    </span>
-                  )}
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-2 w-28">
-                    <RolloutRail total={tpKeys.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
-                    <span className="font-mono text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>{progress}%</span>
-                  </div>
-                </td>
-                <td className="px-5 py-4">
-                  <div className="flex items-center gap-2 w-28">
-                    <RolloutRail total={qaKeys.length} completed={qaDone} color={qa === 100 ? 'var(--moss)' : 'var(--arctic)'} size="sm" />
-                    <span className="font-mono text-xs flex-shrink-0" style={{ color: 'var(--muted)' }}>{qaDone}/{qaKeys.length}</span>
-                  </div>
-                </td>
-                <td className="no-print px-5 py-4 text-right">
-                  <Link
-                    to={`/admin/implementation/${impl.id}`}
-                    className="font-medium hover:opacity-70"
-                    style={{ color: 'var(--arctic)' }}
-                  >
-                    View →
-                  </Link>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
     </div>
   )
 }

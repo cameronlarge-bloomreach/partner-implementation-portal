@@ -17,39 +17,34 @@ function formatDateTime(val) {
 function band(pct) {
   if (pct === null) return { color: 'var(--muted)', label: null }
   if (pct >= 100) return { color: 'var(--rust)', label: 'Over limit' }
-  if (pct >= 85) return { color: 'var(--gold)', label: 'Near limit' }
+  if (pct >= 85) return { color: '#c99a00', label: 'Near limit' }
   return { color: 'var(--moss)', label: null }
 }
 
 function Tile({ value, label, warn }) {
   return (
-    <div className="bg-white rounded-2xl p-4 relative overflow-hidden" style={{ border: '1px solid var(--hairline)' }}>
-      <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: warn ? 'var(--rust)' : 'var(--gold)' }} />
-      <p className="font-mono text-2xl font-semibold" style={{ color: warn ? 'var(--rust)' : 'var(--ink)' }}>{value}</p>
-      <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{label}</p>
+    <div className="bg-white rounded-2xl relative overflow-hidden" style={{ border: '1px solid var(--hairline)', padding: '16px 18px' }}>
+      <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: warn ? 'var(--rust)' : 'var(--gold)' }} />
+      <p className="font-mono text-[28px] font-semibold leading-none" style={{ color: warn ? 'var(--rust)' : 'var(--ink)' }}>{value}</p>
+      <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>{label}</p>
     </div>
   )
 }
 
-// One billing meter inside a client row.
+// One billing meter inside a client card.
 function MeterLine({ meter }) {
   const b = band(meter.pct)
   return (
     <div>
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-medium" style={{ color: 'var(--ink)', minWidth: '150px' }}>{meter.label}</span>
-        <span className="font-mono text-xs" style={{ color: 'var(--ink)' }}>
-          {fmt(meter.value)}{meter.limit ? <span style={{ color: 'var(--muted)' }}> / {fmt(meter.limit)}</span> : ''}
+      <div className="flex flex-wrap items-baseline justify-between gap-y-0.5 mb-2">
+        <span className="text-[12.5px] font-medium" style={{ color: 'var(--ink)' }}>{meter.label}</span>
+        <span className="font-mono text-[11.5px] whitespace-nowrap" style={{ color: meter.pct !== null ? b.color : 'var(--muted)' }}>
+          {fmt(meter.value)}{meter.limit ? ` / ${fmt(meter.limit)}` : ''} · {meter.pct !== null ? `${meter.pct}%` : (meter.limit ? 'no usage' : 'no limit')}
         </span>
-        {meter.pct !== null
-          ? <span className="font-mono text-xs" style={{ color: b.color }}>{meter.pct}%{b.label ? ` · ${b.label}` : ''}</span>
-          : <span className="text-xs" style={{ color: 'var(--muted)' }}>{meter.limit ? 'no usage yet' : 'no limit set'}</span>}
       </div>
-      {meter.pct !== null && (
-        <div className="mt-1 h-1.5 w-full max-w-sm rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
-          <div className="h-full rounded-full" style={{ width: `${Math.min(meter.pct, 100)}%`, background: b.color }} />
-        </div>
-      )}
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
+        <div className="h-full rounded-full" style={{ width: `${meter.pct === null ? 0 : Math.min(meter.pct, 100)}%`, background: b.color }} />
+      </div>
     </div>
   )
 }
@@ -109,17 +104,17 @@ export default function Analytics({ credential, userInfo, onLogout }) {
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
       <Navbar userInfo={userInfo} onLogout={onLogout} title="Analytics — Partner Portal" />
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-7xl mx-auto px-7 py-7">
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div>
-            <h1 className="font-display text-xl font-semibold" style={{ color: 'var(--ink)' }}>Usage Analytics</h1>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
-              Every client's billing meters against their contracted limits — PE &amp; MES for events, Billable Profiles &amp; MUV for profiles.
+            <h1 className="font-display text-[22px] font-semibold" style={{ color: 'var(--ink)' }}>Usage Analytics</h1>
+            <p className="text-[13px] mt-1" style={{ color: 'var(--muted)' }}>
+              Billing meters against contracted limits — Profiles &amp; Events models.
             </p>
           </div>
           <Link
             to="/admin"
-            className="text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
             style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
           >
             ← Dashboard
@@ -132,19 +127,19 @@ export default function Analytics({ credential, userInfo, onLogout }) {
           <div className="text-center py-20 text-sm" style={{ color: 'var(--rust)' }}>{error}</div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
               <Tile value={linked.length} label="Linked clients" />
               <Tile value={metersTracked} label="Meters with a limit" />
               <Tile value={nearLimit} label="Near limit (≥85%)" warn={nearLimit > 0} />
               <Tile value={overLimit} label="Over limit" warn={overLimit > 0} />
             </div>
 
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2" style={{ marginBottom: '18px' }}>
               {MODEL_FILTERS.map(([key, label]) => (
                 <button
                   key={key}
                   onClick={() => setModelFilter(key)}
-                  className="text-xs font-medium px-3 py-1.5 rounded-full transition-colors"
+                  className="text-[12.5px] font-medium px-3.5 py-1.5 rounded-full transition-colors"
                   style={modelFilter === key
                     ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' }
                     : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}
@@ -154,49 +149,32 @@ export default function Analytics({ credential, userInfo, onLogout }) {
               ))}
             </div>
 
-            <div className="bg-white rounded-2xl overflow-hidden" style={{ border: '1px solid var(--hairline)' }}>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm" style={{ minWidth: '760px' }}>
-                  <thead style={{ background: 'var(--paper)', borderBottom: '1px solid var(--hairline)' }}>
-                    <tr>
-                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Partner / Client</th>
-                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Model</th>
-                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Billing meters</th>
-                      <th className="text-left px-5 py-3 font-medium" style={{ color: 'var(--muted)' }}>Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y" style={{ borderColor: 'var(--paper)' }}>
-                    {sorted.map(c => (
-                      <tr key={c.impl.id} className="hover:bg-[var(--paper)] transition-colors align-top">
-                        <td className="px-5 py-4">
-                          <div className="font-medium" style={{ color: 'var(--ink)' }}>{c.impl.client_name}</div>
-                          <div className="text-xs" style={{ color: 'var(--muted)' }}>{c.impl.partner_name}</div>
-                        </td>
-                        <td className="px-5 py-4">
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
-                            {c.model === 'events' ? 'Events' : 'Profiles'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-4" style={{ minWidth: '340px' }}>
-                          <div className="space-y-3">
-                            {c.meters.map(m => <MeterLine key={m.key} meter={m} />)}
-                          </div>
-                        </td>
-                        <td className="px-5 py-4 text-xs" style={{ color: 'var(--muted)' }}>{formatDateTime(c.updated)}</td>
-                      </tr>
-                    ))}
-                    {sorted.length === 0 && (
-                      <tr><td colSpan={4} className="px-5 py-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
-                        No {modelFilter !== 'all' ? modelFilter + '-model ' : ''}clients recorded yet — set limits in the Control Centre.
-                      </td></tr>
-                    )}
-                  </tbody>
-                </table>
+            {sorted.length === 0 ? (
+              <div className="bg-white rounded-2xl p-12 text-center text-sm" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
+                No {modelFilter !== 'all' ? modelFilter + '-model ' : ''}clients recorded yet — set limits from the Internal tab on an implementation.
               </div>
-            </div>
+            ) : (
+              <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+                {sorted.map(c => (
+                  <div key={c.impl.id} className="bg-white rounded-2xl" style={{ border: '1px solid var(--hairline)', padding: '18px' }}>
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{c.impl.client_name}</span>
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
+                        {c.model === 'events' ? 'Events' : 'Profiles'}
+                      </span>
+                    </div>
+                    <p className="text-xs mb-3.5" style={{ color: 'var(--muted)' }}>{c.impl.partner_name}</p>
+                    <div className="flex flex-col gap-3">
+                      {c.meters.map(m => <MeterLine key={m.key} meter={m} />)}
+                    </div>
+                    <p className="font-mono text-[11px] mt-3.5" style={{ color: 'var(--muted)' }}>Updated {formatDateTime(c.updated)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {unlinkedCount > 0 && (
-              <p className="text-xs mt-3" style={{ color: 'var(--muted)' }}>
+              <p className="text-xs mt-4" style={{ color: 'var(--muted)' }}>
                 {unlinkedCount} implementation{unlinkedCount === 1 ? '' : 's'} not linked to a Bloomreach org — not shown.
               </p>
             )}

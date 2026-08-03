@@ -6,10 +6,8 @@ import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
 import VerifyMagicLink from './pages/VerifyMagicLink'
 import PartnerSelect from './pages/PartnerSelect'
-import PartnerDashboard from './pages/PartnerDashboard'
 import AdminDashboard from './pages/AdminDashboard'
-import AdminImplementation from './pages/AdminImplementation'
-import ControlCentre from './pages/ControlCentre'
+import ImplementationDetail from './pages/ImplementationDetail'
 import Analytics from './pages/Analytics'
 
 function defaultRouteFor(userInfo) {
@@ -106,7 +104,7 @@ export default function App() {
         element={
           !credential
             ? <Navigate to="/login" replace />
-            : <PartnerDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+            : <ImplementationDetail credential={credential} userInfo={userInfo} onLogout={handleLogout} />
         }
       />
       <Route
@@ -126,17 +124,7 @@ export default function App() {
             ? <Navigate to="/login" replace />
             : !userInfo?.isAdmin
             ? <Navigate to="/" replace />
-            : <AdminImplementation credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-        }
-      />
-      <Route
-        path="/admin/control-centre"
-        element={
-          !credential
-            ? <Navigate to="/login" replace />
-            : !userInfo?.isAdmin
-            ? <Navigate to="/" replace />
-            : <ControlCentre credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+            : <ImplementationDetail credential={credential} userInfo={userInfo} onLogout={handleLogout} />
         }
       />
       <Route
