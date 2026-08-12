@@ -110,6 +110,9 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRo
     meetingNotes: isAdmin ? noteRows.map(shapeNote) : [],
     bloomreachOrgId: isAdmin ? (impl.bloomreach_org_id || '') : undefined,
     bloomreachOrgName: isAdmin ? (impl.bloomreach_org_name || '') : undefined,
+    // Which Loomi Connect instance (loomi-connect vs loomi-connect-eu) the
+    // MCP should query for this client. Admin-only, like the org link itself.
+    bloomreachRegion: isAdmin ? (impl.bloomreach_region || '') : undefined,
     scenariosSyncedAt: isAdmin ? (impl.scenarios_synced_at || '') : undefined,
     scenarios: isAdmin ? scenarioRows.map(shapeScenario) : [],
     profileCount: isAdmin ? (impl.profile_count ?? null) : undefined,
@@ -440,6 +443,14 @@ export async function updateBloomreachOrgLink(_token, implementationId, orgId, o
   const { error } = await supabase.from('implementations')
     .update({ bloomreach_org_id: orgId || '', bloomreach_org_name: orgName || '' })
     .eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+// region is 'eu' or 'uk' — tells the Loomi MCP which Loomi Connect instance
+// (loomi-connect vs loomi-connect-eu) to query for this client.
+export async function updateBloomreachRegion(_token, implementationId, region) {
+  const { error } = await supabase.from('implementations')
+    .update({ bloomreach_region: region }).eq('id', implementationId)
   return error ? fail(error) : { ok: true }
 }
 

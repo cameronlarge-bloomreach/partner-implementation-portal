@@ -6,7 +6,7 @@ import {
   deleteImplementation, updateSlackChannel,
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink,
-  updatePricingModel, upsertUsageMetric, USAGE_METERS,
+  updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
 } from '../api'
 import Navbar from '../components/Navbar'
 import StepsManager from '../components/StepsManager'
@@ -215,6 +215,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [orgLinkInput, setOrgLinkInput] = useState({ orgId: '', orgName: '' })
   const [savingOrgLink, setSavingOrgLink] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
+  const [savingRegion, setSavingRegion] = useState(false)
   const [expandedNote, setExpandedNote] = useState(null)
   const [showAddNote, setShowAddNote] = useState(false)
   const [newNote, setNewNote] = useState(EMPTY_NOTE)
@@ -377,6 +378,13 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
     const res = await updatePricingModel(credential, id, value)
     if (!res.error) patchImpl({ pricingModel: value })
     setSavingPricing(false)
+  }
+
+  async function handleSetRegion(value) {
+    setSavingRegion(true)
+    const res = await updateBloomreachRegion(credential, id, value)
+    if (!res.error) patchImpl({ bloomreachRegion: value })
+    setSavingRegion(false)
   }
 
   async function saveMetric(metricKey, value, limit) {
@@ -877,6 +885,22 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                           )
                         })}
                       </div>
+                      <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Loomi Region</p>
+                      <p className="text-[11px] mb-2" style={{ color: 'var(--muted)' }}>Which Loomi Connect instance the MCP should query for this client.</p>
+                      <div className="flex gap-2 mb-4">
+                        {[['eu', 'EU'], ['uk', 'UK']].map(([value, label]) => {
+                          const active = impl.bloomreachRegion === value
+                          return (
+                            <button key={value} disabled={savingRegion} onClick={() => handleSetRegion(value)}
+                              className="text-xs font-medium px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
+                              style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
+                              {label}
+                            </button>
+                          )
+                        })}
+                        {!impl.bloomreachRegion && <span className="text-xs self-center" style={{ color: 'var(--muted)' }}>Not set</span>}
+                      </div>
+
                       <div className="space-y-3">
                         {(USAGE_METERS[impl.pricingModel || 'profiles']).map(meter => (
                           <MeterEditor key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} onSave={(value, limit) => saveMetric(meter.key, value, limit)} />
