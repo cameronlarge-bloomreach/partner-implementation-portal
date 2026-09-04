@@ -56,6 +56,7 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   // Autosave bookkeeping. editGen only increments from an explicit user
   // edit (never from the initial fetch), so watching it — rather than
@@ -106,6 +107,19 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   async function handleClose() {
     if (dirtyRef.current) await doSave()
     onClose()
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+    } catch {
+      // Clipboard API unavailable (e.g. insecure context) — fall back to a
+      // manual select so the user can still Cmd/Ctrl+C it themselves.
+      window.prompt('Copy this link:', window.location.href)
+      return
+    }
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
   }
 
   useEffect(() => {
@@ -164,7 +178,12 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
               </div>
               <h2 className="font-display text-[28px] font-semibold mt-1" style={{ color: 'var(--ink)' }}>{workbook.label}</h2>
             </div>
-            <button onClick={handleClose} className="text-2xl leading-none flex-shrink-0" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+            <div className="flex items-center gap-3 flex-shrink-0">
+              <button onClick={copyLink} className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors" style={{ border: '1px solid var(--hairline)', color: linkCopied ? 'var(--moss)' : 'var(--arctic)' }}>
+                {linkCopied ? 'Link copied ✓' : 'Copy link'}
+              </button>
+              <button onClick={handleClose} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-3 text-[11.5px]" style={{ color: 'var(--muted)' }}>
             <span><strong style={{ color: 'var(--ink)' }}>Scope</strong> &nbsp;{workbook.scope}</span>
