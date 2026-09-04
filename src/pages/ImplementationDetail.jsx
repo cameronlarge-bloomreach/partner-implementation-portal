@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   getImplementation, updateDates, updateTouchPoint,
   addAccess, removeAccess, updateImplementationStatus,
@@ -174,6 +174,7 @@ function MeterEditor({ meter, data, onSave }) {
 export default function ImplementationDetail({ credential, userInfo, onLogout }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [impl, setImpl] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -198,7 +199,31 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [editingRaid, setEditingRaid] = useState(null)
   const [editRaidData, setEditRaidData] = useState({})
 
-  const [openWorkbookStep, setOpenWorkbookStep] = useState(null)
+  // Deep-linkable: opening a workbook writes ?qa=<step key> to the URL, so
+  // "share this QA doc" is just "copy the address bar" — reopening it (or
+  // a link someone sent) restores the same modal on load.
+  const [openWorkbookStep, setOpenWorkbookStep] = useState(() => {
+    const q = searchParams.get('qa')
+    return q && QA_WORKBOOKS[q] ? q : null
+  })
+
+  function openWorkbook(stepKey) {
+    setOpenWorkbookStep(stepKey)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.set('qa', stepKey)
+      return next
+    })
+  }
+
+  function closeWorkbook() {
+    setOpenWorkbookStep(null)
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('qa')
+      return next
+    })
+  }
 
   const [newAccessEmail, setNewAccessEmail] = useState('')
   const [addingAccess, setAddingAccess] = useState(false)
@@ -581,7 +606,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                           <span className="font-mono text-xs w-4 flex-shrink-0" style={{ color: 'var(--muted)' }}>{i + 1}</span>
                           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_DOT[status] }} />
                           {QA_WORKBOOKS[step.key] ? (
-                            <button onClick={() => setOpenWorkbookStep(step.key)}
+                            <button onClick={() => openWorkbook(step.key)}
                               className="text-[13.5px] truncate text-left hover:underline underline-offset-2" style={{ color: 'var(--ink)' }}>
                               {step.label}
                             </button>
@@ -991,7 +1016,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           isAdmin={isAdmin}
           clientName={impl.client_name}
           partnerName={impl.partner_name}
-          onClose={() => setOpenWorkbookStep(null)}
+          onClose={closeWorkbook}
         />
       )}
     </div>
