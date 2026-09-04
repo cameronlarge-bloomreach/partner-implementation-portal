@@ -115,10 +115,10 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   const doneCount = workbook.checks.filter(c => data.checks[c.key]?.status).length
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto py-6 px-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-3xl mx-auto" style={{ border: '1px solid var(--hairline)' }} onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col" style={{ border: '1px solid var(--hairline)', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="px-7 pt-6 pb-5 sticky top-0 bg-white rounded-t-2xl z-10" style={{ borderBottom: '2px solid #000' }}>
+        <div className="px-7 pt-6 pb-5 rounded-t-2xl flex-shrink-0" style={{ borderBottom: '2px solid #000' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--arctic)' }}>
@@ -150,7 +150,7 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
           </div>
         </div>
 
-        <div className="px-7 py-6">
+        <div className="px-7 py-6 overflow-y-auto flex-1">
           <p className="text-[13px] leading-relaxed mb-6" style={{ color: 'var(--muted)' }}>{workbook.intro}</p>
 
           {/* Checks */}
@@ -289,7 +289,7 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 px-7 py-4 sticky bottom-0 bg-white rounded-b-2xl" style={{ borderTop: '1px solid var(--hairline)' }}>
+        <div className="flex items-center justify-between gap-3 px-7 py-4 rounded-b-2xl flex-shrink-0" style={{ borderTop: '1px solid var(--hairline)' }}>
           <span className="text-xs" style={{ color: 'var(--muted)' }}>{saved ? 'Saved' : ' '}</span>
           <div className="flex items-center gap-2">
             <button onClick={onClose} className="text-sm px-4 py-1.5 rounded-lg" style={{ color: 'var(--muted)' }}>Close</button>
