@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getQAWorkbook, saveQAWorkbook } from '../api'
 import { QA_WORKBOOKS, STATUSES, SEVERITIES, emptyWorkbookData, computeVerdict } from '../qaWorkbooks'
 
@@ -57,6 +57,17 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState(null)
 
+  // Autosave bookkeeping. editGen only increments from an explicit user
+  // edit (never from the initial fetch), so watching it — rather than
+  // `data` itself — can't mistake "just loaded" for "just edited", and
+  // stays correct even under StrictMode's double-invoked effects. dirtyRef
+  // lets us flush on close if the debounce timer hasn't fired yet, so a
+  // quick edit-then-close is never lost.
+  const [editGen, setEditGen] = useState(0)
+  const dirtyRef = useRef(false)
+  const dataRef = useRef(null)
+  const debounceRef = useRef(null)
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -70,11 +81,39 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [implementationId, stepKey])
 
+  useEffect(() => { dataRef.current = data }, [data])
+
   useEffect(() => {
-    function onKey(e) { if (e.key === 'Escape') onClose() }
+    if (editGen === 0) return // nothing edited yet — this is just the load
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => { doSave() }, 1200)
+    return () => clearTimeout(debounceRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editGen])
+
+  async function doSave() {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    setSaving(true)
+    const res = await saveQAWorkbook(credential, implementationId, stepKey, dataRef.current)
+    setSaving(false)
+    if (!res.error) {
+      dirtyRef.current = false
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+    }
+  }
+
+  async function handleClose() {
+    if (dirtyRef.current) await doSave()
+    onClose()
+  }
+
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') handleClose() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   if (loading || !data) {
     return (
@@ -86,9 +125,15 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
     )
   }
 
-  function patch(fields) { setData(d => ({ ...d, ...fields })) }
+  function patch(fields) {
+    dirtyRef.current = true
+    setData(d => ({ ...d, ...fields }))
+    setEditGen(g => g + 1)
+  }
   function patchCheck(key, fields) {
+    dirtyRef.current = true
     setData(d => ({ ...d, checks: { ...d.checks, [key]: { ...d.checks[key], ...fields } } }))
+    setEditGen(g => g + 1)
   }
   function pickStatus(key, value) {
     const cur = data.checks[key] || {}
@@ -104,18 +149,11 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   }
   function removeAction(i) { patch({ actions: data.actions.filter((_, idx) => idx !== i) }) }
 
-  async function handleSave() {
-    setSaving(true)
-    const res = await saveQAWorkbook(credential, implementationId, stepKey, data)
-    setSaving(false)
-    if (!res.error) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
-  }
-
   const verdict = computeVerdict(workbook, data)
   const doneCount = workbook.checks.filter(c => data.checks[c.key]?.status).length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={handleClose}>
       <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col" style={{ border: '1px solid var(--hairline)', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-7 pt-6 pb-5 rounded-t-2xl flex-shrink-0" style={{ borderBottom: '2px solid #000' }}>
@@ -126,7 +164,7 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
               </div>
               <h2 className="font-display text-[28px] font-semibold mt-1" style={{ color: 'var(--ink)' }}>{workbook.label}</h2>
             </div>
-            <button onClick={onClose} className="text-2xl leading-none flex-shrink-0" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+            <button onClick={handleClose} className="text-2xl leading-none flex-shrink-0" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-3 text-[11.5px]" style={{ color: 'var(--muted)' }}>
             <span><strong style={{ color: 'var(--ink)' }}>Scope</strong> &nbsp;{workbook.scope}</span>
@@ -290,11 +328,13 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-3 px-7 py-4 rounded-b-2xl flex-shrink-0" style={{ borderTop: '1px solid var(--hairline)' }}>
-          <span className="text-xs" style={{ color: 'var(--muted)' }}>{saved ? 'Saved' : ' '}</span>
+          <span className="text-xs" style={{ color: 'var(--muted)' }}>
+            {saving ? 'Saving…' : saved ? 'Saved' : dirtyRef.current ? 'Unsaved changes' : 'Autosaves as you go'}
+          </span>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className="text-sm px-4 py-1.5 rounded-lg" style={{ color: 'var(--muted)' }}>Close</button>
-            <button onClick={handleSave} disabled={saving} className="text-black text-sm font-medium px-4 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
-              {saving ? 'Saving…' : 'Save'}
+            <button onClick={handleClose} className="text-sm px-4 py-1.5 rounded-lg" style={{ color: 'var(--muted)' }}>Close</button>
+            <button onClick={doSave} disabled={saving} className="text-black text-sm font-medium px-4 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
+              {saving ? 'Saving…' : 'Save now'}
             </button>
           </div>
         </div>
