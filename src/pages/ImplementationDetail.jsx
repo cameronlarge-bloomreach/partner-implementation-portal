@@ -12,6 +12,8 @@ import Navbar from '../components/Navbar'
 import StepsManager from '../components/StepsManager'
 import ImplementationDocuments from '../components/ImplementationDocuments'
 import ProgressRing from '../components/ProgressRing'
+import QAWorkbookModal from '../components/QAWorkbookModal'
+import { QA_WORKBOOKS } from '../qaWorkbooks'
 
 const DATE_FIELDS = [
   { key: 'planned_completion_date', label: 'Planned Completion', note: 'Set at start' },
@@ -196,9 +198,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [editingRaid, setEditingRaid] = useState(null)
   const [editRaidData, setEditRaidData] = useState({})
 
-  const [expandedQANote, setExpandedQANote] = useState(null)
-  const [qaNoteText, setQaNoteText] = useState({})
-  const [savingQANote, setSavingQANote] = useState(null)
+  const [openWorkbookStep, setOpenWorkbookStep] = useState(null)
 
   const [newAccessEmail, setNewAccessEmail] = useState('')
   const [addingAccess, setAddingAccess] = useState(false)
@@ -238,11 +238,6 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
         setSlackChannelId(data.slackChannelId || '')
         setRaidItems(data.raid || [])
         setDocuments(data.documents || [])
-        const notes = {}
-        Object.keys(data.qaSteps || {}).forEach(k => {
-          if (k.endsWith('_notes')) notes[k.replace('_notes', '')] = data.qaSteps[k]
-        })
-        setQaNoteText(notes)
         setActiveTab('overview')
       }
     }).catch(() => setError('Failed to load this implementation. Please refresh.'))
@@ -279,16 +274,6 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       setImpl(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [key]: status } }))
     } catch { /* silent */ }
     setSavingStep(null)
-  }
-
-  async function handleSaveQANote(stepKey) {
-    const text = qaNoteText[stepKey] || ''
-    setSavingQANote(stepKey)
-    try {
-      await updateTouchPoint(credential, id, stepKey + '_notes', text)
-      setImpl(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [stepKey + '_notes']: text } }))
-    } catch { /* silent */ }
-    setSavingQANote(null)
   }
 
   async function handleAddAccess(e) {
@@ -585,42 +570,30 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               <SectionTitle pill={
                 <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: qaPct === 100 ? 'var(--moss-bg)' : 'var(--arctic)', color: qaPct === 100 ? 'var(--moss)' : '#fff' }}>{qaPct}%</span>
               }>QA Peer Reviews</SectionTitle>
+              <p className="text-[11.5px] -mt-2.5 mb-2" style={{ color: 'var(--muted)' }}>Click a step to open the SDC review workbook.</p>
               <div>
                 {qaList.map((step, i) => {
                   const status = qa[step.key] || 'not_started'
-                  const noteExpanded = expandedQANote === step.key
-                  const currentNote = qaNoteText[step.key] || ''
                   return (
                     <div key={step.key} className="border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
                       <div className="flex items-center justify-between py-2.5">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className="font-mono text-xs w-4 flex-shrink-0" style={{ color: 'var(--muted)' }}>{i + 1}</span>
                           <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_DOT[status] }} />
-                          <span className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>{step.label}</span>
+                          {QA_WORKBOOKS[step.key] ? (
+                            <button onClick={() => setOpenWorkbookStep(step.key)}
+                              className="text-[13.5px] truncate text-left hover:underline underline-offset-2" style={{ color: 'var(--ink)' }}>
+                              {step.label}
+                            </button>
+                          ) : (
+                            <span className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>{step.label}</span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                          <button onClick={() => setExpandedQANote(noteExpanded ? null : step.key)} className="text-xs font-medium" style={{ color: currentNote ? 'var(--arctic)' : 'var(--muted)' }}>
-                            {currentNote ? 'Note ✓' : 'Note'}
-                          </button>
                           {savingStep === step.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
                           <StatusSelect value={status} onChange={v => handleQAChange(step.key, v)} disabled={savingStep === step.key} />
                         </div>
                       </div>
-                      {noteExpanded && (
-                        <div className="pb-3 pl-6">
-                          <textarea value={currentNote} onChange={e => setQaNoteText(n => ({ ...n, [step.key]: e.target.value }))}
-                            rows={3} placeholder="Add QA feedback or notes…"
-                            className="w-full rounded-lg px-3 py-2 text-xs resize-none focus:outline-none"
-                            style={{ border: '1px solid var(--hairline)', background: 'var(--paper)', color: 'var(--ink)' }} />
-                          <div className="flex items-center gap-2 mt-1.5">
-                            <button onClick={() => handleSaveQANote(step.key)} disabled={savingQANote === step.key}
-                              className="text-xs font-medium px-3 py-1 rounded-lg disabled:opacity-50 text-black" style={{ background: 'var(--gold)' }}>
-                              {savingQANote === step.key ? 'Saving…' : 'Save note'}
-                            </button>
-                            <button onClick={() => setExpandedQANote(null)} className="text-xs" style={{ color: 'var(--muted)' }}>Close</button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -1009,6 +982,18 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           </div>
         )}
       </div>
+
+      {openWorkbookStep && (
+        <QAWorkbookModal
+          credential={credential}
+          implementationId={id}
+          stepKey={openWorkbookStep}
+          isAdmin={isAdmin}
+          clientName={impl.client_name}
+          partnerName={impl.partner_name}
+          onClose={() => setOpenWorkbookStep(null)}
+        />
+      )}
     </div>
   )
 }

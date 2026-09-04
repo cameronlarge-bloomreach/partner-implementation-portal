@@ -239,6 +239,24 @@ export async function updateTouchPoint(_token, implementationId, key, status) {
   return error ? fail(error) : { ok: true }
 }
 
+// ---- QA Workbooks (interactive SDC review forms, one row per step) ----
+
+export async function getQAWorkbook(_token, implementationId, stepKey) {
+  const { data, error } = await supabase.from('qa_workbook_entries')
+    .select('data, updated_at').eq('implementation_id', implementationId).eq('step_key', stepKey).maybeSingle()
+  return error ? fail(error) : { ok: true, data: data?.data || null, updatedAt: data?.updated_at || null }
+}
+
+export async function saveQAWorkbook(_token, implementationId, stepKey, data) {
+  const { error } = await supabase.from('qa_workbook_entries').upsert({
+    implementation_id: implementationId,
+    step_key: stepKey,
+    data,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'implementation_id,step_key' })
+  return error ? fail(error) : { ok: true }
+}
+
 export async function updateDates(_token, implementationId, dates) {
   const patch = {}
   for (const key of IMPL_DATE_KEYS) {
