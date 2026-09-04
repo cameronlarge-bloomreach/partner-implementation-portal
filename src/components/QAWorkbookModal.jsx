@@ -115,8 +115,8 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   const doneCount = workbook.checks.filter(c => data.checks[c.key]?.status).length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-6 px-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-3xl my-auto" style={{ border: '1px solid var(--hairline)' }} onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 overflow-y-auto py-6 px-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl mx-auto" style={{ border: '1px solid var(--hairline)' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-7 pt-6 pb-5 sticky top-0 bg-white rounded-t-2xl z-10" style={{ borderBottom: '2px solid #000' }}>
           <div className="flex items-start justify-between gap-4">
