@@ -11,7 +11,7 @@ import ImplementationDetail from './pages/ImplementationDetail'
 import Analytics from './pages/Analytics'
 
 function defaultRouteFor(userInfo) {
-  if (userInfo?.isAdmin) return '/admin'
+  if (userInfo?.isAdmin || userInfo?.isSDC) return '/admin'
   if (userInfo?.implementations?.length === 1) return `/implementation/${userInfo.implementations[0].id}`
   return '/select'
 }
@@ -26,7 +26,7 @@ function CenteredMessage({ children }) {
 
 export default function App() {
   // session: undefined = still checking storage/URL, null = signed out.
-  // userInfo = { email, name, isAdmin, implementations } or { error, email }.
+  // userInfo = { email, name, isAdmin, isSDC, implementations } or { error, email }.
   const [session, setSession] = useState(undefined)
   const [userInfo, setUserInfo] = useState(null)
   const navigate = useNavigate()
@@ -112,7 +112,7 @@ export default function App() {
         element={
           !credential
             ? <Navigate to="/login" replace />
-            : !userInfo?.isAdmin
+            : !(userInfo?.isAdmin || userInfo?.isSDC)
             ? <Navigate to="/" replace />
             : <AdminDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
         }
@@ -122,7 +122,7 @@ export default function App() {
         element={
           !credential
             ? <Navigate to="/login" replace />
-            : !userInfo?.isAdmin
+            : !(userInfo?.isAdmin || userInfo?.isSDC)
             ? <Navigate to="/" replace />
             : <ImplementationDetail credential={credential} userInfo={userInfo} onLogout={handleLogout} />
         }

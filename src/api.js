@@ -92,40 +92,46 @@ function shapeDoc(d) {
   }
 }
 
-function buildImplResponse(impl, tpRows, raidRows, isAdmin, accessEmails, noteRows, scenarioRows, scopeRows, docRows, metricRows) {
+// isAdmin: can edit everything. isSDC: sees the same internal-only fields
+// as admin (view parity — every implementation, every tab), but is never
+// treated as edit-capable here; the frontend gates SDC's write access down
+// to QA workbooks only, and RLS enforces the same boundary server-side.
+function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails, noteRows, scenarioRows, scopeRows, docRows, metricRows) {
   const { touchPoints, qaSteps } = splitTouchPoints(tpRows)
+  const canViewInternal = isAdmin || isSDC
   const resp = {
     id: impl.id,
     partner_name: impl.partner_name,
     client_name: impl.client_name,
     status: impl.status || 'active',
     isAdmin,
+    isSDC,
     accessEmails,
-    slackChannelId: isAdmin ? (impl.slack_channel_id || '') : undefined,
+    slackChannelId: canViewInternal ? (impl.slack_channel_id || '') : undefined,
     touchPoints,
     qaSteps,
     raid: raidRows.map(shapeRaid),
     scope: (scopeRows || []).map(shapeScope),
     documents: (docRows || []).map(shapeDoc),
-    meetingNotes: isAdmin ? noteRows.map(shapeNote) : [],
-    bloomreachOrgId: isAdmin ? (impl.bloomreach_org_id || '') : undefined,
-    bloomreachOrgName: isAdmin ? (impl.bloomreach_org_name || '') : undefined,
+    meetingNotes: canViewInternal ? noteRows.map(shapeNote) : [],
+    bloomreachOrgId: canViewInternal ? (impl.bloomreach_org_id || '') : undefined,
+    bloomreachOrgName: canViewInternal ? (impl.bloomreach_org_name || '') : undefined,
     // Which Loomi Connect instance (loomi-connect vs loomi-connect-eu) the
-    // MCP should query for this client. Admin-only, like the org link itself.
-    bloomreachRegion: isAdmin ? (impl.bloomreach_region || '') : undefined,
-    scenariosSyncedAt: isAdmin ? (impl.scenarios_synced_at || '') : undefined,
-    scenarios: isAdmin ? scenarioRows.map(shapeScenario) : [],
-    profileCount: isAdmin ? (impl.profile_count ?? null) : undefined,
-    profileCountSyncedAt: isAdmin ? (impl.profile_count_synced_at || '') : undefined,
+    // MCP should query for this client. Internal-only, like the org link.
+    bloomreachRegion: canViewInternal ? (impl.bloomreach_region || '') : undefined,
+    scenariosSyncedAt: canViewInternal ? (impl.scenarios_synced_at || '') : undefined,
+    scenarios: canViewInternal ? scenarioRows.map(shapeScenario) : [],
+    profileCount: canViewInternal ? (impl.profile_count ?? null) : undefined,
+    profileCountSyncedAt: canViewInternal ? (impl.profile_count_synced_at || '') : undefined,
     // Bloomreach bills either on profiles or on events — the model decides
     // which usage figure the Control Centre leads with.
     pricingModel: impl.pricing_model || 'profiles',
-    eventCount: isAdmin ? (impl.event_count ?? null) : undefined,
-    eventCountSyncedAt: isAdmin ? (impl.event_count_synced_at || '') : undefined,
-    profileLimit: isAdmin ? (impl.profile_limit ?? null) : undefined,
-    eventLimit: isAdmin ? (impl.event_limit ?? null) : undefined,
-    // Four contractual billing meters (manual). Admin-only.
-    usageMetrics: isAdmin ? shapeMetrics(metricRows) : {},
+    eventCount: canViewInternal ? (impl.event_count ?? null) : undefined,
+    eventCountSyncedAt: canViewInternal ? (impl.event_count_synced_at || '') : undefined,
+    profileLimit: canViewInternal ? (impl.profile_limit ?? null) : undefined,
+    eventLimit: canViewInternal ? (impl.event_limit ?? null) : undefined,
+    // Four contractual billing meters (manual). Internal-only.
+    usageMetrics: canViewInternal ? shapeMetrics(metricRows) : {},
   }
   for (const key of IMPL_DATE_KEYS) resp[key] = impl[key] || ''
   return resp
@@ -137,23 +143,31 @@ async function callerIsAdmin() {
   return data === true
 }
 
+async function callerIsSDC() {
+  const { data, error } = await supabase.rpc('is_sdc')
+  if (error) throw error
+  return data === true
+}
+
 // ---- Reads ----
 
 export async function getMyImplementations() {
   try {
-    const [isAdmin, { data: impls, error }] = await Promise.all([
+    const [isAdmin, isSDC, { data: impls, error }] = await Promise.all([
       callerIsAdmin(),
+      callerIsSDC(),
       supabase.from('implementations').select('id, partner_name, client_name').order('partner_name'),
     ])
     if (error) throw error
-    if (!isAdmin && impls.length === 0) return { error: 'unauthorized' }
-    return { isAdmin, implementations: impls }
+    if (!isAdmin && !isSDC && impls.length === 0) return { error: 'unauthorized' }
+    return { isAdmin, isSDC, implementations: impls }
   } catch (e) { return fail(e) }
 }
 
 export async function getImplementation(_token, implementationId) {
   try {
-    const isAdmin = await callerIsAdmin()
+    const [isAdmin, isSDC] = await Promise.all([callerIsAdmin(), callerIsSDC()])
+    const canViewInternal = isAdmin || isSDC
     const [impl, tps, raid, scope, docs, access, notes, scenarios, metrics] = await Promise.all([
       supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
       supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
@@ -161,13 +175,13 @@ export async function getImplementation(_token, implementationId) {
       supabase.from('scope_items').select('*').eq('implementation_id', implementationId).order('category').order('position'),
       supabase.from('documents').select('*').eq('implementation_id', implementationId).order('uploaded_at', { ascending: false }),
       supabase.from('access').select('email').eq('implementation_id', implementationId),
-      isAdmin
+      canViewInternal
         ? supabase.from('meeting_notes').select('*').eq('implementation_id', implementationId).order('meeting_date', { ascending: false })
         : Promise.resolve({ data: [] }),
-      isAdmin
+      canViewInternal
         ? supabase.from('scenario_sync').select('*').eq('implementation_id', implementationId).order('name')
         : Promise.resolve({ data: [] }),
-      isAdmin
+      canViewInternal
         ? supabase.from('usage_metrics').select('*').eq('implementation_id', implementationId)
         : Promise.resolve({ data: [] }),
     ])
@@ -181,7 +195,7 @@ export async function getImplementation(_token, implementationId) {
       ...(partnerGrants.data || []).map(g => `${g.email} (partner-wide)`),
     ]
     return buildImplResponse(
-      impl.data, tps.data, raid.data, isAdmin,
+      impl.data, tps.data, raid.data, isAdmin, isSDC,
       emails, notes.data, scenarios.data, scope.data, docs.data, metrics.data,
     )
   } catch (e) { return fail(e) }
@@ -189,6 +203,7 @@ export async function getImplementation(_token, implementationId) {
 
 export async function getAllImplementations() {
   try {
+    const [isAdmin, isSDC] = await Promise.all([callerIsAdmin(), callerIsSDC()])
     const [impls, tps, raid, scope, docs, access, notes, scenarios, metrics, partnerGrants] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
@@ -221,7 +236,7 @@ export async function getAllImplementations() {
     const scenarioMap = byImpl(scenarios.data)
     const metricMap = byImpl(metrics.data)
     return impls.data.map(impl => buildImplResponse(
-      impl, tpMap[impl.id] || [], raidMap[impl.id] || [], true,
+      impl, tpMap[impl.id] || [], raidMap[impl.id] || [], isAdmin, isSDC,
       [
         ...(accessMap[impl.id] || []).map(a => a.email),
         ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
@@ -615,11 +630,15 @@ export async function deleteStepDefinition(step, implementationId) {
 
 // ---- Sign-up approval ----
 
-// target: { type: 'admin' } | { type: 'partner', partnerName } | { type: 'implementation', id }
+// target: { type: 'admin' } | { type: 'sdc' } | { type: 'partner', partnerName } | { type: 'implementation', id }
 export async function approveSignup(email, target) {
   const clean = email.trim().toLowerCase()
   if (target.type === 'admin') {
     const { error } = await supabase.from('admin_emails').insert({ email: clean })
+    return error ? fail(error) : { ok: true }
+  }
+  if (target.type === 'sdc') {
+    const { error } = await supabase.from('sdc_emails').insert({ email: clean })
     return error ? fail(error) : { ok: true }
   }
   if (target.type === 'partner') {
@@ -646,16 +665,18 @@ export async function declineSignup(profileId) {
 
 export async function getPendingSignups() {
   try {
-    const [profiles, access, admins, partnerGrants] = await Promise.all([
+    const [profiles, access, admins, sdc, partnerGrants] = await Promise.all([
       supabase.from('profiles').select('id, email, created_at').eq('declined', false).order('created_at', { ascending: false }),
       supabase.from('access').select('email'),
       supabase.from('admin_emails').select('email'),
+      supabase.from('sdc_emails').select('email'),
       supabase.from('partner_access').select('email'),
     ])
     if (profiles.error) return []
     const known = new Set([
       ...(access.data || []).map(a => a.email),
       ...(admins.data || []).map(a => a.email),
+      ...(sdc.data || []).map(a => a.email),
       ...(partnerGrants.data || []).map(a => a.email),
     ])
     return profiles.data.filter(p => !known.has(p.email))
@@ -693,6 +714,7 @@ export async function loadUserInfo(session) {
     email: session.user.email,
     name: session.user.email,
     isAdmin: info.isAdmin,
+    isSDC: info.isSDC,
     implementations: info.implementations,
   }
 }

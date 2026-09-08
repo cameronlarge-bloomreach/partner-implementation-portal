@@ -33,6 +33,10 @@ function isOverdue(impl) {
 const EMPTY_FORM = { emails: '', partner_name: '', client_name: '', slackChannelId: '' }
 
 export default function AdminDashboard({ credential, userInfo, onLogout }) {
+  // Reachable by SDC too (they see every implementation, same as admin),
+  // but implementation management (add partner, approve sign-ups) stays
+  // admin-only — isAdmin here is the true-admin flag, not "can view".
+  const isAdmin = !!userInfo?.isAdmin
   const [implementations, setImplementations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -150,13 +154,15 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             </p>
           </div>
           <div className="flex gap-2.5">
-            <Link
-              to="/admin/analytics"
-              className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
-              style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
-            >
-              Analytics
-            </Link>
+            {isAdmin && (
+              <Link
+                to="/admin/analytics"
+                className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
+                style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+              >
+                Analytics
+              </Link>
+            )}
             <button
               onClick={() => window.print()}
               className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
@@ -164,18 +170,20 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             >
               Export to PDF
             </button>
-            <button
-              onClick={() => { setShowAdd(v => !v); setAddError(null) }}
-              className="text-black text-sm font-semibold px-4 py-2 rounded-[10px] transition-opacity hover:opacity-90"
-              style={{ background: 'var(--gold)' }}
-            >
-              + Add implementation
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => { setShowAdd(v => !v); setAddError(null) }}
+                className="text-black text-sm font-semibold px-4 py-2 rounded-[10px] transition-opacity hover:opacity-90"
+                style={{ background: 'var(--gold)' }}
+              >
+                + Add implementation
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Pending sign-ups awaiting approval */}
-        {pending.length > 0 && (
+        {/* Pending sign-ups awaiting approval — admin only, SDC just views implementations */}
+        {isAdmin && pending.length > 0 && (
           <div className="no-print bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--gold)' }}>
             <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>
               Pending sign-ups <span className="font-mono text-sm" style={{ color: 'var(--muted)' }}>({pending.length})</span>
@@ -453,6 +461,8 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
     setError(null)
     const target = choice === 'admin'
       ? { type: 'admin' }
+      : choice === 'sdc'
+      ? { type: 'sdc' }
       : choice.startsWith('partner:')
       ? { type: 'partner', partnerName: choice.slice(8) }
       : { type: 'implementation', id: choice.slice(5) }
@@ -488,6 +498,7 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
         </optgroup>
         <optgroup label="Bloomreach">
           <option value="admin">Make admin — full access to everything</option>
+          <option value="sdc">Make SDC — sees everything, can only edit QA docs</option>
         </optgroup>
       </select>
       <button

@@ -113,7 +113,7 @@ function StatusSelect({ value, onChange, disabled }) {
 }
 
 // Edits one billing meter: current usage + contracted limit, with a utilisation bar.
-function MeterEditor({ meter, data, onSave }) {
+function MeterEditor({ meter, data, onSave, editable = true }) {
   const [usage, setUsage] = useState(data?.value ?? '')
   const [limit, setLimit] = useState(data?.limit ?? '')
   const [saving, setSaving] = useState(false)
@@ -146,18 +146,20 @@ function MeterEditor({ meter, data, onSave }) {
       <div className="flex items-end gap-2 flex-wrap">
         <label className="flex flex-col">
           <span className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>Usage</span>
-          <input type="number" min="0" value={usage} onChange={e => setUsage(e.target.value)} placeholder="—"
-            className="w-32 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+          <input type="number" min="0" value={usage} disabled={!editable} onChange={e => setUsage(e.target.value)} placeholder="—"
+            className="w-32 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
         </label>
         <span className="pb-2" style={{ color: 'var(--muted)' }}>/</span>
         <label className="flex flex-col">
           <span className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>Limit</span>
-          <input type="number" min="0" value={limit} onChange={e => setLimit(e.target.value)} placeholder="—"
-            className="w-32 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+          <input type="number" min="0" value={limit} disabled={!editable} onChange={e => setLimit(e.target.value)} placeholder="—"
+            className="w-32 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
         </label>
-        <button type="submit" disabled={saving} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
-          {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
-        </button>
+        {editable && (
+          <button type="submit" disabled={saving} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
+            {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+          </button>
+        )}
       </div>
       {pctVal !== null && (
         <div className="mt-2">
@@ -454,6 +456,11 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   )
 
   const isAdmin = !!impl.isAdmin
+  // SDC sees everything admin sees (every tab, every field) but can only
+  // ever write QA workbook entries — every other edit control below stays
+  // gated to isAdmin specifically, while visibility gates use canViewAll.
+  const isSDC = !!impl.isSDC
+  const canViewAll = isAdmin || isSDC
   const tp = impl.touchPoints || {}
   const qa = impl.qaSteps || {}
   const tpRequired = tpList.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
@@ -464,18 +471,18 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const qaPct = qaRequired.length === 0 ? 100 : Math.round(qaCompleted / qaRequired.length * 100)
   const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
 
-  const backHref = isAdmin ? '/admin' : (userInfo?.implementations?.length > 1 ? '/select' : null)
-  const backLabel = isAdmin ? '← All partners' : '← My implementations'
+  const backHref = canViewAll ? '/admin' : (userInfo?.implementations?.length > 1 ? '/select' : null)
+  const backLabel = canViewAll ? '← All partners' : '← My implementations'
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
     { key: 'setup', label: 'Setup' },
-    ...(isAdmin ? [{ key: 'internal', label: 'Internal' }] : []),
+    ...(canViewAll ? [{ key: 'internal', label: 'Internal' }] : []),
   ]
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
-      <Navbar userInfo={userInfo} onLogout={onLogout} title={isAdmin ? 'Admin — Partner Portal' : 'Partner Portal'} />
+      <Navbar userInfo={userInfo} onLogout={onLogout} title={isAdmin ? 'Admin — Partner Portal' : isSDC ? 'SDC — Partner Portal' : 'Partner Portal'} />
 
       <div className="max-w-[1120px] mx-auto px-7 py-7">
         {backHref && <Link to={backHref} className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>{backLabel}</Link>}
@@ -549,7 +556,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
             <Card>
               <SectionTitle>Scope of Work</SectionTitle>
               <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={false} onChange={() => {}} />
-              {isAdmin && (
+              {canViewAll && (
                 <p className="text-xs mt-2.5" style={{ color: 'var(--muted)' }}>
                   Slack channel: <span className="font-mono">{impl.slackChannelId || 'Not set'}</span>
                 </p>
@@ -583,7 +590,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                       </div>
                       <div className="flex items-center gap-1.5">
                         {savingStep === item.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                        <StatusSelect value={status} onChange={v => handleTPChange(item.key, v)} disabled={savingStep === item.key} />
+                        <StatusSelect value={status} onChange={v => handleTPChange(item.key, v)} disabled={savingStep === item.key || isSDC} />
                       </div>
                     </div>
                   )
@@ -616,7 +623,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                           {savingStep === step.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                          <StatusSelect value={status} onChange={v => handleQAChange(step.key, v)} disabled={savingStep === step.key} />
+                          <StatusSelect value={status} onChange={v => handleQAChange(step.key, v)} disabled={savingStep === step.key || isSDC} />
                         </div>
                       </div>
                     </div>
@@ -729,16 +736,18 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   </span>
                 ))}
               </div>
-              <form onSubmit={handleAddAccess} className="flex gap-2 max-w-sm">
-                <input type="email" required value={newAccessEmail} onChange={e => setNewAccessEmail(e.target.value)}
-                  placeholder="partner@company.com" className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                <button type="submit" disabled={addingAccess} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
-                  {addingAccess ? 'Adding…' : isAdmin ? 'Grant access' : 'Invite'}
-                </button>
-              </form>
+              {!isSDC && (
+                <form onSubmit={handleAddAccess} className="flex gap-2 max-w-sm">
+                  <input type="email" required value={newAccessEmail} onChange={e => setNewAccessEmail(e.target.value)}
+                    placeholder="partner@company.com" className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+                  <button type="submit" disabled={addingAccess} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
+                    {addingAccess ? 'Adding…' : isAdmin ? 'Grant access' : 'Invite'}
+                  </button>
+                </form>
+              )}
             </Card>
 
-            {isAdmin && (
+            {canViewAll && (
               <Card>
                 <div className="flex items-center justify-between mb-3.5">
                   <SectionTitle>Slack Notifications</SectionTitle>
@@ -748,16 +757,16 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   Partner touch point/QA updates post to this channel. Invite the bot to the channel first (<span className="font-mono">/invite @YourAppName</span>), then paste its channel ID below.
                 </p>
                 <form onSubmit={handleSaveSlackChannel} className="flex gap-2 max-w-sm">
-                  <input type="text" value={slackChannelId} onChange={e => setSlackChannelId(e.target.value)} placeholder="C0123ABCD"
-                    className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                  <button type="submit" disabled={savingSlack} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
+                  <input type="text" value={slackChannelId} onChange={e => setSlackChannelId(e.target.value)} placeholder="C0123ABCD" disabled={!isAdmin}
+                    className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
+                  <button type="submit" disabled={savingSlack || !isAdmin} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
                     {savingSlack ? 'Saving…' : 'Save'}
                   </button>
                 </form>
               </Card>
             )}
 
-            {isAdmin && (
+            {canViewAll && (
               <Card>
                 <div className="flex items-center justify-between mb-3.5">
                   <SectionTitle>Key Dates</SectionTitle>
@@ -770,26 +779,26 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                         {field.label}
                         {field.note && <span className="ml-1" style={{ color: 'var(--arctic)' }}>({field.note})</span>}
                       </label>
-                      <input type="date" value={dates[field.key] || ''} onChange={e => setDates(d => ({ ...d, [field.key]: e.target.value }))}
-                        className="w-full font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={{ border: '1px solid var(--hairline)', background: 'var(--paper)' }} />
+                      <input type="date" value={dates[field.key] || ''} disabled={!isAdmin} onChange={e => setDates(d => ({ ...d, [field.key]: e.target.value }))}
+                        className="w-full font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)', background: 'var(--paper)' }} />
                     </div>
                   ))}
-                  <button type="submit" disabled={savingDates} className="sm:col-span-4 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
+                  <button type="submit" disabled={savingDates || !isAdmin} className="sm:col-span-4 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
                     {savingDates ? 'Saving…' : 'Save dates'}
                   </button>
                 </form>
               </Card>
             )}
 
-            {isAdmin && (
+            {canViewAll && (
               <Card>
                 <SectionTitle>Scope of Work</SectionTitle>
                 <p className="text-xs -mt-2.5 mb-3" style={{ color: 'var(--muted)' }}>The partner's SOW and any related documents. Visible to the partner on their Overview tab.</p>
-                <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={true} onChange={setDocuments} />
+                <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} />
               </Card>
             )}
 
-            {isAdmin && (
+            {canViewAll && (
               <Card>
                 <div className="flex items-center justify-between">
                   <div>
@@ -798,11 +807,13 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                       {stepDefs?.isCustom ? 'Custom checklist for this client.' : 'Using the standard checklist.'} {tpList.length} touch points · {qaList.length} QA steps
                     </p>
                   </div>
-                  <button onClick={() => setShowSteps(v => !v)} className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
-                    {showSteps ? 'Done' : 'Edit steps'}
-                  </button>
+                  {isAdmin && (
+                    <button onClick={() => setShowSteps(v => !v)} className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
+                      {showSteps ? 'Done' : 'Edit steps'}
+                    </button>
+                  )}
                 </div>
-                {showSteps && stepDefs && (
+                {isAdmin && showSteps && stepDefs && (
                   <div className="mt-4">
                     <StepsManager implementationId={id} steps={stepDefs} onChanged={setStepDefs} onClose={() => setShowSteps(false)} />
                   </div>
@@ -828,8 +839,8 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           </div>
         )}
 
-        {/* Internal — admin only */}
-        {activeTab === 'internal' && isAdmin && (
+        {/* Internal — admin and SDC only, hidden from partners */}
+        {activeTab === 'internal' && canViewAll && (
           <div>
             <div className="flex items-center gap-2 mb-3.5">
               <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--muted)' }} />
@@ -839,7 +850,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               <Card>
                 <div className="flex items-center justify-between mb-2.5">
                   <SectionTitle>Bloomreach Org</SectionTitle>
-                  {!editingOrgLink && (
+                  {isAdmin && !editingOrgLink && (
                     <button onClick={() => { setOrgLinkInput({ orgId: impl.bloomreachOrgId || '', orgName: impl.bloomreachOrgName || '' }); setEditingOrgLink(true) }}
                       className="text-xs font-medium -mt-3.5" style={{ color: 'var(--arctic)' }}>
                       {impl.bloomreachOrgId ? 'Edit' : 'Link org'}
@@ -875,7 +886,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                         {[['profiles', 'Profiles'], ['events', 'Events']].map(([value, label]) => {
                           const active = (impl.pricingModel || 'profiles') === value
                           return (
-                            <button key={value} disabled={savingPricing} onClick={() => handleSetPricingModel(value)}
+                            <button key={value} disabled={savingPricing || !isAdmin} onClick={() => handleSetPricingModel(value)}
                               className="text-xs font-medium px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
                               style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
                               {label}
@@ -889,7 +900,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                         {[['eu', 'EU'], ['uk', 'UK']].map(([value, label]) => {
                           const active = impl.bloomreachRegion === value
                           return (
-                            <button key={value} disabled={savingRegion} onClick={() => handleSetRegion(value)}
+                            <button key={value} disabled={savingRegion || !isAdmin} onClick={() => handleSetRegion(value)}
                               className="text-xs font-medium px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
                               style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
                               {label}
@@ -901,7 +912,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
                       <div className="space-y-3">
                         {(USAGE_METERS[impl.pricingModel || 'profiles']).map(meter => (
-                          <MeterEditor key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} onSave={(value, limit) => saveMetric(meter.key, value, limit)} />
+                          <MeterEditor key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} editable={isAdmin} onSave={(value, limit) => saveMetric(meter.key, value, limit)} />
                         ))}
                       </div>
                       <p className="text-[11px] mt-3 italic" style={{ color: 'var(--muted)' }}>
@@ -950,10 +961,10 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
               <Card>
                 <SectionTitle pill={
-                  <button onClick={() => setShowAddNote(v => !v)} className="text-xs font-semibold px-3.5 py-1.5 rounded-[9px] text-black" style={{ background: 'var(--gold)' }}>+ Add note</button>
+                  isAdmin && <button onClick={() => setShowAddNote(v => !v)} className="text-xs font-semibold px-3.5 py-1.5 rounded-[9px] text-black" style={{ background: 'var(--gold)' }}>+ Add note</button>
                 }>Meeting Notes</SectionTitle>
 
-                {showAddNote && (
+                {isAdmin && showAddNote && (
                   <form onSubmit={handleAddNote} className="mb-4 p-3 rounded-xl space-y-2.5 text-sm" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       <input type="text" required value={newNote.title} onChange={e => setNewNote(n => ({ ...n, title: e.target.value }))}
@@ -990,9 +1001,11 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                               </div>
                               <div className="text-xs font-mono mt-0.5" style={{ color: 'var(--muted)' }}>{formatDate(note.meeting_date)}</div>
                             </button>
-                            <button onClick={() => handleDeleteNote(note.id)} disabled={deletingNoteId === note.id} className="text-xs disabled:opacity-50 flex-shrink-0" style={{ color: 'var(--rust)' }}>
-                              {deletingNoteId === note.id ? 'Deleting…' : 'Delete'}
-                            </button>
+                            {isAdmin && (
+                              <button onClick={() => handleDeleteNote(note.id)} disabled={deletingNoteId === note.id} className="text-xs disabled:opacity-50 flex-shrink-0" style={{ color: 'var(--rust)' }}>
+                                {deletingNoteId === note.id ? 'Deleting…' : 'Delete'}
+                              </button>
+                            )}
                           </div>
                           {isExpanded && note.content && (
                             <p className="text-xs mt-2 leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>{note.content}</p>
@@ -1013,7 +1026,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           credential={credential}
           implementationId={id}
           stepKey={openWorkbookStep}
-          isAdmin={isAdmin}
+          isAdmin={isAdmin || isSDC}
           clientName={impl.client_name}
           partnerName={impl.partner_name}
           onClose={closeWorkbook}
