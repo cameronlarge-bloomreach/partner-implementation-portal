@@ -6,6 +6,7 @@
 // the session internally. Response shapes mirror the old buildImplResponse.
 
 import { supabase } from './supabaseClient'
+import { QA_WORKBOOKS, emptyWorkbookData } from './qaWorkbooks'
 
 function fail(error) {
   return { error: error.message || String(error) }
@@ -270,6 +271,31 @@ export async function saveQAWorkbook(_token, implementationId, stepKey, data) {
     updated_at: new Date().toISOString(),
   }, { onConflict: 'implementation_id,step_key' })
   return error ? fail(error) : { ok: true }
+}
+
+// Raises a ClickUp ticket in SDC Tickets > Backlog (same destination as the
+// live "Work Intake Form") via the raise-sdc-ticket Edge Function, then
+// records it on the step's workbook so it's visible next time it's opened.
+// The Edge Function re-checks admin/SDC server-side — this call being
+// reachable at all doesn't imply it will succeed for anyone else.
+export async function raiseSdcTicket(payload) {
+  const { data, error } = await supabase.functions.invoke('raise-sdc-ticket', { body: payload })
+  if (error) {
+    // supabase-js surfaces non-2xx responses as a generic FunctionsHttpError;
+    // the useful message is in the response body the function returned.
+    const detail = await error.context?.json?.().catch(() => null)
+    return fail(detail?.error || error)
+  }
+  if (data?.error) return fail(data.error)
+  return { ok: true, taskId: data.taskId, url: data.url }
+}
+
+export async function attachTicketToWorkbook(implementationId, stepKey, ticket) {
+  const existing = await getQAWorkbook(null, implementationId, stepKey)
+  if (existing.error) return existing
+  const data = existing.data || emptyWorkbookData(QA_WORKBOOKS[stepKey]?.checks || [])
+  data.ticket = ticket
+  return saveQAWorkbook(null, implementationId, stepKey, data)
 }
 
 export async function updateDates(_token, implementationId, dates) {

@@ -190,6 +190,11 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
             <span><strong style={{ color: 'var(--ink)' }}>Reviewer</strong> &nbsp;{workbook.reviewer}</span>
             <span><strong style={{ color: 'var(--ink)' }}>Client</strong> &nbsp;{clientName}</span>
             <span><strong style={{ color: 'var(--ink)' }}>Partner</strong> &nbsp;{partnerName}</span>
+            {data.ticket && (
+              <a href={data.ticket.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--arctic)' }}>
+                ClickUp ticket ↗
+              </a>
+            )}
           </div>
           <div className="flex items-center gap-4 mt-3">
             <label className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--muted)' }}>

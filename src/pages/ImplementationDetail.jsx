@@ -13,6 +13,7 @@ import StepsManager from '../components/StepsManager'
 import ImplementationDocuments from '../components/ImplementationDocuments'
 import ProgressRing from '../components/ProgressRing'
 import QAWorkbookModal from '../components/QAWorkbookModal'
+import RaiseTicketModal from '../components/RaiseTicketModal'
 import { QA_WORKBOOKS } from '../qaWorkbooks'
 
 const DATE_FIELDS = [
@@ -226,6 +227,13 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       return next
     })
   }
+
+  // Raise-a-ClickUp-ticket, step one before SDC works the actual workbook.
+  // raisedTickets only tracks what happened this session — the durable
+  // record lives on the workbook itself (qa_workbook_entries.data.ticket),
+  // shown there whenever it's reopened.
+  const [raisingTicketStep, setRaisingTicketStep] = useState(null)
+  const [raisedTickets, setRaisedTickets] = useState({})
 
   const [newAccessEmail, setNewAccessEmail] = useState('')
   const [addingAccess, setAddingAccess] = useState(false)
@@ -622,6 +630,18 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                           )}
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                          {canViewAll && QA_WORKBOOKS[step.key] && (
+                            raisedTickets[step.key] ? (
+                              <a href={raisedTickets[step.key].url} target="_blank" rel="noopener noreferrer"
+                                className="text-xs font-medium" style={{ color: 'var(--moss)' }}>
+                                Ticket ↗
+                              </a>
+                            ) : (
+                              <button onClick={() => setRaisingTicketStep(step.key)} className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>
+                                Raise ticket
+                              </button>
+                            )
+                          )}
                           {savingStep === step.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
                           <StatusSelect value={status} onChange={v => handleQAChange(step.key, v)} disabled={savingStep === step.key || isSDC} />
                         </div>
@@ -1030,6 +1050,17 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           clientName={impl.client_name}
           partnerName={impl.partner_name}
           onClose={closeWorkbook}
+        />
+      )}
+
+      {raisingTicketStep && (
+        <RaiseTicketModal
+          implementationId={id}
+          stepKey={raisingTicketStep}
+          workbookLabel={QA_WORKBOOKS[raisingTicketStep]?.label || ''}
+          clientName={impl.client_name}
+          onClose={() => setRaisingTicketStep(null)}
+          onRaised={ticket => setRaisedTickets(prev => ({ ...prev, [raisingTicketStep]: ticket }))}
         />
       )}
     </div>
