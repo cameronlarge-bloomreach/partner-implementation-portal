@@ -81,7 +81,7 @@ export const QA_WORKBOOKS = {
           '· Total amount and currency',
           '· Timestamps (order date, payment date)',
           '· Product / item detail — product IDs, names, quantities, prices',
-          "Cross-reference a few events against the client's order system to confirm accuracy.",
+          "Ask the partner to cross-reference a few events against the client's order system to confirm accuracy — SDC only has access to the Bloomreach project, not client backend systems.",
         ],
       },
       {
@@ -112,7 +112,7 @@ export const QA_WORKBOOKS = {
       {
         key: 'tracking', title: 'Live tracking',
         guidance: [
-          "Trigger a test purchase from the client's backend system.",
+          "Ask the partner to trigger a test purchase — SDC does not have access to the client's backend system to do this directly. A recent real purchase works too, if the partner can point to one.",
           'Verify the event appears in Bloomreach within seconds / minutes.',
           'Confirm it is attributed to the correct customer profile.',
           'Check all required attributes are present.',
@@ -148,7 +148,7 @@ export const QA_WORKBOOKS = {
         guidance: [
           'Using the tracking document as your reference, test each required event by performing the action on the website and confirming the event appears in Bloomreach.',
           'Cart events — add to cart, update quantity, remove from cart. Check each includes product IDs, prices, and quantities.',
-          'Conversion events — complete a checkout. Check the event includes order ID, items, and amounts.',
+          'Conversion events — complete a checkout if the site allows it without payment (e.g. a test mode or free item); otherwise ask the partner to complete one and share the order details. Check the event includes order ID, items, and amounts.',
           'Product interactions — view a product, click a product, add to wishlist.',
           'Search events — perform a search, click a result.',
           'Form / consent events — submit a newsletter signup or consent form.',
