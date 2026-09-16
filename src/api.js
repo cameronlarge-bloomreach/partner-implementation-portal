@@ -117,6 +117,10 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails,
     meetingNotes: canViewInternal ? noteRows.map(shapeNote) : [],
     bloomreachOrgId: canViewInternal ? (impl.bloomreach_org_id || '') : undefined,
     bloomreachOrgName: canViewInternal ? (impl.bloomreach_org_name || '') : undefined,
+    // Internal owner (Partner Services Manager) — whoever actually owns the
+    // account, independent of which SDC member raises a ticket for it.
+    psmName: canViewInternal ? (impl.psm_name || '') : undefined,
+    psmEmail: canViewInternal ? (impl.psm_email || '') : undefined,
     // Which Loomi Connect instance (loomi-connect vs loomi-connect-eu) the
     // MCP should query for this client. Internal-only, like the org link.
     bloomreachRegion: canViewInternal ? (impl.bloomreach_region || '') : undefined,
@@ -501,6 +505,13 @@ export async function upsertUsageMetric(_token, implementationId, metricKey, { v
 export async function updateBloomreachOrgLink(_token, implementationId, orgId, orgName) {
   const { error } = await supabase.from('implementations')
     .update({ bloomreach_org_id: orgId || '', bloomreach_org_name: orgName || '' })
+    .eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+export async function updatePSM(_token, implementationId, name, email) {
+  const { error } = await supabase.from('implementations')
+    .update({ psm_name: name || '', psm_email: email || '' })
     .eq('id', implementationId)
   return error ? fail(error) : { ok: true }
 }

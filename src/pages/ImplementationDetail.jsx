@@ -5,7 +5,7 @@ import {
   addAccess, removeAccess, updateImplementationStatus,
   deleteImplementation, updateSlackChannel,
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
-  addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink,
+  addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, updatePSM,
   updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
 } from '../api'
 import Navbar from '../components/Navbar'
@@ -248,6 +248,9 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   // Internal tab (admin only)
   const [editingOrgLink, setEditingOrgLink] = useState(false)
   const [orgLinkInput, setOrgLinkInput] = useState({ orgId: '', orgName: '' })
+  const [editingPSM, setEditingPSM] = useState(false)
+  const [psmInput, setPsmInput] = useState({ name: '', email: '' })
+  const [savingPSM, setSavingPSM] = useState(false)
   const [savingOrgLink, setSavingOrgLink] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
   const [savingRegion, setSavingRegion] = useState(false)
@@ -424,6 +427,17 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       setEditingOrgLink(false)
     } catch { /* silent */ }
     setSavingOrgLink(false)
+  }
+
+  async function handleSavePSM(e) {
+    e.preventDefault()
+    setSavingPSM(true)
+    try {
+      await updatePSM(credential, id, psmInput.name.trim(), psmInput.email.trim())
+      patchImpl({ psmName: psmInput.name.trim(), psmEmail: psmInput.email.trim() })
+      setEditingPSM(false)
+    } catch { /* silent */ }
+    setSavingPSM(false)
   }
 
   async function handleAddNote(e) {
@@ -869,6 +883,43 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
             <div className="flex flex-col gap-5">
               <Card>
                 <div className="flex items-center justify-between mb-2.5">
+                  <SectionTitle>Partner Services Manager</SectionTitle>
+                  {isAdmin && !editingPSM && (
+                    <button onClick={() => { setPsmInput({ name: impl.psmName || '', email: impl.psmEmail || '' }); setEditingPSM(true) }}
+                      className="text-xs font-medium -mt-3.5" style={{ color: 'var(--arctic)' }}>
+                      {impl.psmName ? 'Edit' : 'Set owner'}
+                    </button>
+                  )}
+                </div>
+                <p className="text-xs -mt-1.5 mb-2.5" style={{ color: 'var(--muted)' }}>
+                  Whoever internally owns this account — used to credit and notify the right person when SDC raises a ticket, regardless of who actually raises it.
+                </p>
+
+                {editingPSM ? (
+                  <form onSubmit={handleSavePSM} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input type="text" value={psmInput.name} onChange={e => setPsmInput(v => ({ ...v, name: e.target.value }))}
+                      placeholder="Name (e.g. James Tewson)" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+                    <input type="email" value={psmInput.email} onChange={e => setPsmInput(v => ({ ...v, email: e.target.value }))}
+                      placeholder="Email" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+                    <div className="flex gap-2 sm:col-span-2">
+                      <button type="submit" disabled={savingPSM} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
+                        {savingPSM ? 'Saving…' : 'Save'}
+                      </button>
+                      <button type="button" onClick={() => setEditingPSM(false)} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
+                    </div>
+                  </form>
+                ) : impl.psmName ? (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[13.5px]" style={{ color: 'var(--ink)' }}>{impl.psmName}</span>
+                    {impl.psmEmail && <span className="font-mono text-[11.5px]" style={{ color: 'var(--muted)' }}>{impl.psmEmail}</span>}
+                  </div>
+                ) : (
+                  <p className="text-xs" style={{ color: 'var(--muted)' }}>Not set — tickets raised from here will credit whoever raises them, nothing more.</p>
+                )}
+              </Card>
+
+              <Card>
+                <div className="flex items-center justify-between mb-2.5">
                   <SectionTitle>Bloomreach Org</SectionTitle>
                   {isAdmin && !editingOrgLink && (
                     <button onClick={() => { setOrgLinkInput({ orgId: impl.bloomreachOrgId || '', orgName: impl.bloomreachOrgName || '' }); setEditingOrgLink(true) }}
@@ -1059,6 +1110,8 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           stepKey={raisingTicketStep}
           workbookLabel={QA_WORKBOOKS[raisingTicketStep]?.label || ''}
           clientName={impl.client_name}
+          psmName={impl.psmName}
+          psmEmail={impl.psmEmail}
           onClose={() => setRaisingTicketStep(null)}
           onRaised={ticket => setRaisedTickets(prev => ({ ...prev, [raisingTicketStep]: ticket }))}
         />

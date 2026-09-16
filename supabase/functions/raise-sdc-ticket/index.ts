@@ -29,6 +29,11 @@ const FIELDS = {
   workfrontUrl: '431a7985-60e5-42b3-99ae-1dc36ab525aa',
   bloomreachUrl: '4acc8805-db73-4ccd-845b-32a23bebef06',
   estimatedHours: 'e786603b-be90-4b18-ac8e-02a903caf01a',
+  // Unused by the live form (its own Requestor is an avatar picker driving
+  // the task creator, not this field) — repurposed here to record the
+  // account's Partner Services Manager, since who raises a ticket and who
+  // owns the account aren't always the same person.
+  requestor: '1d451a2d-13b3-4fe2-b852-6ad6e7aff80d',
 }
 
 // Job Type dropdown option ids, in the form's display order.
@@ -102,10 +107,15 @@ Deno.serve(async (req) => {
   if (!(jobType in JOB_TYPE_OPTIONS)) return json({ error: 'Invalid job type.' }, 400)
   if (!(priority in PRIORITY_OPTIONS)) return json({ error: 'Invalid priority.' }, 400)
 
-  // Best-effort: assign the ticket to whoever raised it, matching how the
-  // real form assigns the person filling it in. Never blocks ticket
-  // creation if their email doesn't resolve to a ClickUp member.
+  // Best-effort: assign the ticket to whoever raised it — matching how the
+  // real form assigns the person filling it in — AND to the account's PSM
+  // if one is set on the implementation, so ownership isn't lost just
+  // because a different SDC member happened to raise this one. Never
+  // blocks ticket creation if an email doesn't resolve to a ClickUp member.
+  const psmName = String(body.psmName || '').trim()
+  const psmEmail = String(body.psmEmail || '').trim().toLowerCase()
   let assignees: number[] = []
+  let raiserName = user.email || ''
   try {
     const teamRes = await fetch('https://api.clickup.com/api/v2/team', {
       headers: { Authorization: clickupToken },
@@ -113,10 +123,19 @@ Deno.serve(async (req) => {
     if (teamRes.ok) {
       const teamData = await teamRes.json()
       const team = (teamData.teams || []).find((t: { id: string }) => t.id === WORKSPACE_ID)
-      const member = team?.members?.find(
-        (m: { user: { email?: string } }) => m.user?.email?.toLowerCase() === user.email?.toLowerCase(),
+      const members = team?.members || []
+      const findByEmail = (email: string) => members.find(
+        (m: { user: { email?: string } }) => m.user?.email?.toLowerCase() === email,
       )
-      if (member) assignees = [member.user.id]
+      const raiserMember = findByEmail(user.email?.toLowerCase() || '')
+      if (raiserMember) {
+        assignees.push(raiserMember.user.id)
+        raiserName = raiserMember.user.username || raiserName
+      }
+      if (psmEmail) {
+        const psmMember = findByEmail(psmEmail)
+        if (psmMember && !assignees.includes(psmMember.user.id)) assignees.push(psmMember.user.id)
+      }
     }
   } catch { /* non-fatal — ticket still gets created, just unassigned */ }
 
@@ -125,17 +144,22 @@ Deno.serve(async (req) => {
     { id: FIELDS.customer, value: customer },
     { id: FIELDS.priority, value: PRIORITY_OPTIONS[priority as keyof typeof PRIORITY_OPTIONS] },
     { id: FIELDS.sdcAdded, value: body.sdcAdded ? 'true' : 'false' },
+    // Falls back to whoever raised it when no PSM is set on the account.
+    { id: FIELDS.requestor, value: psmName || raiserName },
   ]
   if (body.workfrontUrl) customFields.push({ id: FIELDS.workfrontUrl, value: String(body.workfrontUrl) })
   if (body.bloomreachUrl) customFields.push({ id: FIELDS.bloomreachUrl, value: String(body.bloomreachUrl) })
   if (body.estimatedHours) customFields.push({ id: FIELDS.estimatedHours, value: String(body.estimatedHours) })
+
+  const descriptionParts = [String(body.description || '')]
+  descriptionParts.push(`\n\n**Raised by:** ${raiserName}${psmName ? `\n**Account owner (PSM):** ${psmName}` : ''}`)
 
   const clickupRes = await fetch(`https://api.clickup.com/api/v2/list/${LIST_ID}/task`, {
     method: 'POST',
     headers: { Authorization: clickupToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: taskName,
-      markdown_description: String(body.description || ''),
+      markdown_description: descriptionParts.join(''),
       assignees,
       custom_fields: customFields,
     }),

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { raiseSdcTicket, attachTicketToWorkbook } from '../api'
 import { JOB_TYPE_OPTIONS, PRIORITY_OPTIONS } from '../clickupTicket'
 
-export default function RaiseTicketModal({ implementationId, stepKey, workbookLabel, clientName, onClose, onRaised }) {
+export default function RaiseTicketModal({ implementationId, stepKey, workbookLabel, clientName, psmName, psmEmail, onClose, onRaised }) {
   const [taskName, setTaskName] = useState(`${clientName} - ${workbookLabel}`)
   const [description, setDescription] = useState('')
   const [jobType, setJobType] = useState('')
@@ -35,6 +35,8 @@ export default function RaiseTicketModal({ implementationId, stepKey, workbookLa
       workfrontUrl: workfrontUrl.trim(),
       bloomreachUrl: bloomreachUrl.trim(),
       estimatedHours: estimatedHours.trim(),
+      psmName: psmName || '',
+      psmEmail: psmEmail || '',
     })
     setSubmitting(false)
     if (res.error) { setError(res.error); return }
@@ -57,6 +59,11 @@ export default function RaiseTicketModal({ implementationId, stepKey, workbookLa
             </div>
             <button onClick={onClose} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
           </div>
+          <p className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>
+            {psmName
+              ? <>Owner on record: <strong style={{ color: 'var(--ink)' }}>{psmName}</strong> — credited on the ticket alongside you.</>
+              : 'No Partner Services Manager set for this account — set one on the Internal tab so tickets credit them too.'}
+          </p>
         </div>
 
         {result ? (
