@@ -7,6 +7,7 @@ import {
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, updatePSM,
   updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
+  IMPLEMENTATION_STATUSES,
 } from '../api'
 import Navbar from '../components/Navbar'
 import StepsManager from '../components/StepsManager'
@@ -341,8 +342,8 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
     } catch { /* silent */ }
   }
 
-  async function handleToggleStatus() {
-    const newStatus = impl.status === 'complete' ? 'active' : 'complete'
+  async function handleSetStatus(newStatus) {
+    if (newStatus === impl.status) return
     setSavingStatus(true)
     try {
       await updateImplementationStatus(credential, id, newStatus)
@@ -522,8 +523,8 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11.5px] font-semibold uppercase tracking-widest" style={{ color: 'var(--arctic)' }}>{impl.partner_name}</span>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: impl.status === 'complete' ? 'var(--moss-bg)' : 'var(--hairline)', color: impl.status === 'complete' ? 'var(--moss)' : 'var(--muted)' }}>
-                  {impl.status === 'complete' ? 'Complete' : 'Active'}
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: IMPLEMENTATION_STATUSES[impl.status]?.bg ?? IMPLEMENTATION_STATUSES.active.bg, color: IMPLEMENTATION_STATUSES[impl.status]?.color ?? IMPLEMENTATION_STATUSES.active.color }}>
+                  {IMPLEMENTATION_STATUSES[impl.status]?.label ?? IMPLEMENTATION_STATUSES.active.label}
                 </span>
               </div>
               <h1 className="font-display text-[26px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</h1>
@@ -864,17 +865,27 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
             {isAdmin && (
               <Card>
-                <SectionTitle>Implementation Actions</SectionTitle>
-                <div className="flex items-center gap-2">
-                  <button onClick={handleToggleStatus} disabled={savingStatus}
-                    className="text-xs font-medium px-3.5 py-1.5 rounded-lg disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
-                    {savingStatus ? 'Saving…' : impl.status === 'complete' ? 'Reopen' : 'Mark Complete'}
-                  </button>
-                  <button onClick={handleDelete} disabled={deleting}
-                    className="text-xs font-medium px-3.5 py-1.5 rounded-lg hover:bg-[var(--rust-bg)] disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--rust)', color: 'var(--rust)' }}>
-                    {deleting ? 'Deleting…' : 'Delete'}
-                  </button>
+                <div className="flex items-center justify-between mb-2.5">
+                  <SectionTitle>Implementation Actions</SectionTitle>
+                  {savingStatus && <span className="text-xs -mt-3.5" style={{ color: 'var(--muted)' }}>Saving…</span>}
                 </div>
+                <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Status</p>
+                <div className="flex gap-2 mb-4">
+                  {Object.values(IMPLEMENTATION_STATUSES).map(meta => {
+                    const active = (impl.status || 'active') === meta.key
+                    return (
+                      <button key={meta.key} disabled={savingStatus} onClick={() => handleSetStatus(meta.key)}
+                        className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                        style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
+                        {meta.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                <button onClick={handleDelete} disabled={deleting}
+                  className="text-xs font-medium px-3.5 py-1.5 rounded-lg hover:bg-[var(--rust-bg)] disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--rust)', color: 'var(--rust)' }}>
+                  {deleting ? 'Deleting…' : 'Delete'}
+                </button>
               </Card>
             )}
           </div>

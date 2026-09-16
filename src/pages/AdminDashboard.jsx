@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getAllImplementations, addImplementation, getPendingSignups, approveSignup,
-  declineSignup, getStepDefinitions, DEFAULT_STEPS,
+  declineSignup, getStepDefinitions, DEFAULT_STEPS, IMPLEMENTATION_STATUSES,
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
@@ -101,7 +101,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
           id: res.id,
           partner_name: form.partner_name,
           client_name: form.client_name,
-          status: 'active',
+          status: 'pending',
           accessEmails: emails,
           slackChannelId: form.slackChannelId.trim(),
           touchPoints: {},
@@ -117,7 +117,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
     setAdding(false)
   }
 
-  const activeImpls = implementations.filter(i => i.status !== 'complete')
+  const activeImpls = implementations.filter(i => i.status === 'active' || !i.status)
+  const pendingImpls = implementations.filter(i => i.status === 'pending')
   const completedImpls = implementations.filter(i => i.status === 'complete')
   const partners = Array.from(new Set(activeImpls.map(i => i.partner_name).filter(Boolean))).sort()
   const totalOpenRaid = implementations.reduce((sum, i) => sum + openRaidCount(i), 0)
@@ -202,7 +203,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
         {/* Add partner form */}
         {showAdd && (
           <div className="no-print bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--hairline)' }}>
-            <h2 className="font-display text-base font-semibold mb-4" style={{ color: 'var(--ink)' }}>Add new partner implementation</h2>
+            <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Add new partner implementation</h2>
+            <p className="text-xs mb-4 mt-0.5" style={{ color: 'var(--muted)' }}>Starts as Pending — mark it Active once the client's signed, from the implementation's Setup tab.</p>
             <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>Partner email(s) *</label>
@@ -310,7 +312,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
             {/* Secondary stats */}
             <div className="grid gap-2.5 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
               {[
-                { label: 'Complete', value: completedImpls.length, warn: false },
+                { label: 'Pending', value: pendingImpls.length, warn: false },
+                { label: 'Closed', value: completedImpls.length, warn: false },
                 { label: 'Open RAID', value: totalOpenRaid, warn: totalOpenRaid > 0 },
                 { label: 'Overdue', value: overdueCount, warn: overdueCount > 0 },
               ].map(s => (
@@ -358,7 +361,22 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               ))
             )}
 
-            {/* Completed — collapsed by default */}
+            {/* Pending — set up in the portal, not yet signed with Bloomreach. Shown expanded: unlike Completed, these still need action. */}
+            {pendingImpls.length > 0 && (
+              <div className="mb-8">
+                <div className="flex items-baseline gap-2.5 mb-3">
+                  <h3 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Pending — not yet signed</h3>
+                  <span className="text-xs" style={{ color: 'var(--muted)' }}>{pendingImpls.length} implementation{pendingImpls.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                  {pendingImpls.map(impl => (
+                    <StatusCard key={impl.id} impl={impl} statusKey="pending" />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Closed — collapsed by default */}
             {completedImpls.length > 0 && (
               <div>
                 <button
@@ -367,12 +385,12 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   style={{ color: 'var(--muted)' }}
                 >
                   <span className={`inline-block transition-transform ${showCompleted ? 'rotate-90' : ''}`}>›</span>
-                  Completed ({completedImpls.length})
+                  Closed ({completedImpls.length})
                 </button>
                 {showCompleted && (
                   <div className="grid gap-3 mt-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
                     {completedImpls.map(impl => (
-                      <CompletedCard key={impl.id} impl={impl} />
+                      <StatusCard key={impl.id} impl={impl} statusKey="complete" />
                     ))}
                   </div>
                 )}
@@ -401,8 +419,8 @@ function ImplCard({ impl, tpKeys, qaKeys }) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</span>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: impl.status === 'complete' ? 'var(--moss-bg)' : 'var(--paper)', color: impl.status === 'complete' ? 'var(--moss)' : 'var(--muted)' }}>
-          {impl.status === 'complete' ? 'Complete' : 'Active'}
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: IMPLEMENTATION_STATUSES[impl.status]?.bg ?? IMPLEMENTATION_STATUSES.active.bg, color: IMPLEMENTATION_STATUSES[impl.status]?.color ?? IMPLEMENTATION_STATUSES.active.color }}>
+          {IMPLEMENTATION_STATUSES[impl.status]?.label ?? IMPLEMENTATION_STATUSES.active.label}
         </span>
       </div>
       {openRaid > 0 && (
@@ -431,7 +449,9 @@ function ImplCard({ impl, tpKeys, qaKeys }) {
   )
 }
 
-function CompletedCard({ impl }) {
+// Used for both the Pending and Closed lists — same layout, different pill.
+function StatusCard({ impl, statusKey }) {
+  const meta = IMPLEMENTATION_STATUSES[statusKey]
   return (
     <Link
       to={`/admin/implementation/${impl.id}`}
@@ -440,7 +460,7 @@ function CompletedCard({ impl }) {
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</span>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: 'var(--moss-bg)', color: 'var(--moss)' }}>Complete</span>
+        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
       </div>
       <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{impl.partner_name}</div>
     </Link>

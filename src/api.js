@@ -420,6 +420,10 @@ export async function addImplementation(_token, data) {
     partner_name: data.partner_name || '',
     client_name: data.client_name,
     slack_channel_id: (data.slackChannelId || '').trim(),
+    // Most implementations are set up in the portal before the client has
+    // actually signed — default to pending rather than active so that
+    // isn't overstated until someone flips it once the contract's in.
+    status: 'pending',
   }).select('id').single()
   if (error) return fail(error)
   const emails = String(data.emails || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
@@ -429,6 +433,16 @@ export async function addImplementation(_token, data) {
     if (accessError) return fail(accessError)
   }
   return { ok: true, id: impl.id }
+}
+
+// Implementation lifecycle. "pending" means set up in the portal but not
+// yet signed with Bloomreach — addImplementation defaults new rows to it;
+// someone flips it to "active" once the contract's in, and "complete" when
+// the engagement wraps up.
+export const IMPLEMENTATION_STATUSES = {
+  pending: { key: 'pending', label: 'Pending', bg: '#FFFCE8', color: '#8A7A00' },
+  active: { key: 'active', label: 'Active', bg: 'var(--paper)', color: 'var(--muted)' },
+  complete: { key: 'complete', label: 'Closed', bg: 'var(--moss-bg)', color: 'var(--moss)' },
 }
 
 export async function updateImplementationStatus(_token, implementationId, status) {
