@@ -42,6 +42,13 @@ const QA_STEPS = [
   { key: 'qa_peer_review_6', label: 'Expiration & Data Cleanliness' },
 ]
 
+// Partner Services Manager — internal account owner. Fixed to the two PSMs
+// today; add another { name, email } here if a third one comes on board.
+const PSM_OPTIONS = [
+  { name: 'Cameron Large', email: 'cameron.large@bloomreach.com' },
+  { name: 'James Tewson', email: 'james.tewson@bloomreach.com' },
+]
+
 const RAID_TYPES = ['Risk', 'Action', 'Issue', 'Dependency']
 const RAID_STATUSES = ['Open', 'In Progress', 'Resolved', 'Closed']
 const EMPTY_RAID = { type: 'Risk', title: '', description: '', status: 'Open', owner: '' }
@@ -896,17 +903,18 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                 </p>
 
                 {editingPSM ? (
-                  <form onSubmit={handleSavePSM} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input type="text" value={psmInput.name} onChange={e => setPsmInput(v => ({ ...v, name: e.target.value }))}
-                      placeholder="Name (e.g. James Tewson)" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                    <input type="email" value={psmInput.email} onChange={e => setPsmInput(v => ({ ...v, email: e.target.value }))}
-                      placeholder="Email" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                    <div className="flex gap-2 sm:col-span-2">
-                      <button type="submit" disabled={savingPSM} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
-                        {savingPSM ? 'Saving…' : 'Save'}
-                      </button>
-                      <button type="button" onClick={() => setEditingPSM(false)} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
-                    </div>
+                  <form onSubmit={handleSavePSM} className="flex items-center gap-2">
+                    <select value={psmInput.email} onChange={e => {
+                      const chosen = PSM_OPTIONS.find(p => p.email === e.target.value)
+                      setPsmInput(chosen ? { name: chosen.name, email: chosen.email } : { name: '', email: '' })
+                    }} className="rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" style={{ border: '1px solid var(--hairline)' }}>
+                      <option value="">Select owner…</option>
+                      {PSM_OPTIONS.map(p => <option key={p.email} value={p.email}>{p.name}</option>)}
+                    </select>
+                    <button type="submit" disabled={savingPSM} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
+                      {savingPSM ? 'Saving…' : 'Save'}
+                    </button>
+                    <button type="button" onClick={() => setEditingPSM(false)} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
                   </form>
                 ) : impl.psmName ? (
                   <div className="flex items-center gap-2 flex-wrap">
