@@ -34,7 +34,7 @@
 
   --font-display: 'Bloomreach Sans', system-ui, -apple-system, sans-serif;
   --font-body: 'Bloomreach Sans', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-mono: 'Bloomreach Sans', system-ui, -apple-system, sans-serif;
 }
 
 * {
