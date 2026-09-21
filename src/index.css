@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+/* ── Brand typeface ─────────────────────────────────────────── */
+@font-face {
+  font-family: 'Bloomreach Sans';
+  src: url('/fonts/BloomreachSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Bloomreach Sans';
+  src: url('/fonts/BloomreachSans-Medium.woff2') format('woff2');
+  font-weight: 500 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ── Design tokens ──────────────────────────────────────────── */
 :root {
   --ink: #0a0a0a;
@@ -15,8 +32,8 @@
   --rust: #c8492a;
   --rust-bg: #fbeee9;
 
-  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Bloomreach Sans', system-ui, -apple-system, sans-serif;
+  --font-body: 'Bloomreach Sans', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
