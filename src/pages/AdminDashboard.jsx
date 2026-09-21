@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getAllImplementations, addImplementation, getPendingSignups, approveSignup,
@@ -45,11 +45,19 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState(null)
   const [partnerFilter, setPartnerFilter] = useState('All')
+  const [attentionFilter, setAttentionFilter] = useState('all') // 'all' | 'raid' | 'overdue'
   const [showCompleted, setShowCompleted] = useState(false)
   const [pending, setPending] = useState([])
   const [steps, setSteps] = useState(DEFAULT_STEPS)
   const tpKeys = steps.touchpoints.map(s => s.key)
   const qaKeys = steps.qaSteps.map(s => s.key)
+  const activeSectionRef = useRef(null)
+  const pendingSectionRef = useRef(null)
+  const closedSectionRef = useRef(null)
+
+  function scrollToSection(ref) {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -117,6 +125,26 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
     setAdding(false)
   }
 
+  function handleActiveTileClick() {
+    setAttentionFilter('all')
+    scrollToSection(activeSectionRef)
+  }
+  function handlePendingTileClick() {
+    scrollToSection(pendingSectionRef)
+  }
+  function handleClosedTileClick() {
+    setShowCompleted(true)
+    scrollToSection(closedSectionRef)
+  }
+  function handleRaidTileClick() {
+    setAttentionFilter(f => f === 'raid' ? 'all' : 'raid')
+    scrollToSection(activeSectionRef)
+  }
+  function handleOverdueTileClick() {
+    setAttentionFilter(f => f === 'overdue' ? 'all' : 'overdue')
+    scrollToSection(activeSectionRef)
+  }
+
   const activeImpls = implementations.filter(i => i.status === 'active' || !i.status)
   const pendingImpls = implementations.filter(i => i.status === 'pending')
   const completedImpls = implementations.filter(i => i.status === 'complete')
@@ -125,7 +153,9 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const overdueCount = activeImpls.filter(isOverdue).length
   const hasAttention = overdueCount > 0 || totalOpenRaid > 0
 
-  const filteredActive = partnerFilter === 'All' ? activeImpls : activeImpls.filter(i => i.partner_name === partnerFilter)
+  const filteredActive = activeImpls
+    .filter(i => partnerFilter === 'All' || i.partner_name === partnerFilter)
+    .filter(i => attentionFilter === 'all' || (attentionFilter === 'raid' ? openRaidCount(i) > 0 : isOverdue(i)))
   const groupNames = partnerFilter === 'All' ? partners : [partnerFilter]
   const partnerGroups = groupNames.map(name => {
     const impls = filteredActive.filter(i => i.partner_name === name)
@@ -298,34 +328,28 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 
             {/* Primary stats */}
             <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-              {[
-                { label: 'Active', value: activeImpls.length },
-              ].map(s => (
-                <div key={s.label} className="bg-white rounded-2xl relative overflow-hidden" style={{ border: '1px solid var(--hairline)', padding: '18px 20px' }}>
-                  <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'var(--gold)' }} />
-                  <p className="font-mono text-[32px] font-semibold leading-none" style={{ color: 'var(--ink)' }}>{s.value}</p>
-                  <p className="text-[12.5px] mt-1.5" style={{ color: 'var(--muted)' }}>{s.label}</p>
-                </div>
-              ))}
+              <button
+                type="button"
+                onClick={handleActiveTileClick}
+                className="no-print text-left bg-white rounded-2xl relative overflow-hidden transition-shadow hover:shadow-md cursor-pointer"
+                style={{ border: '1px solid var(--hairline)', padding: '18px 20px' }}
+              >
+                <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'var(--gold)' }} />
+                <p className="font-mono text-[32px] font-semibold leading-none" style={{ color: 'var(--ink)' }}>{activeImpls.length}</p>
+                <p className="text-[12.5px] mt-1.5" style={{ color: 'var(--muted)' }}>Active</p>
+              </button>
             </div>
 
             {/* Secondary stats */}
             <div className="grid gap-2.5 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
-              {[
-                { label: 'Pending', value: pendingImpls.length, warn: false },
-                { label: 'Closed', value: completedImpls.length, warn: false },
-                { label: 'Open RAID', value: totalOpenRaid, warn: totalOpenRaid > 0 },
-                { label: 'Overdue', value: overdueCount, warn: overdueCount > 0 },
-              ].map(s => (
-                <div key={s.label} className="bg-white rounded-xl flex items-center justify-between" style={{ border: '1px solid var(--hairline)', padding: '12px 16px' }}>
-                  <span className="text-[12.5px]" style={{ color: 'var(--muted)' }}>{s.label}</span>
-                  <span className="font-mono text-[15px] font-semibold" style={{ color: s.warn ? 'var(--rust)' : 'var(--ink)' }}>{s.value}</span>
-                </div>
-              ))}
+              <StatTile label="Pending" value={pendingImpls.length} onClick={handlePendingTileClick} />
+              <StatTile label="Closed" value={completedImpls.length} onClick={handleClosedTileClick} />
+              <StatTile label="Open RAID" value={totalOpenRaid} warn={totalOpenRaid > 0} active={attentionFilter === 'raid'} onClick={handleRaidTileClick} />
+              <StatTile label="Overdue" value={overdueCount} warn={overdueCount > 0} active={attentionFilter === 'overdue'} onClick={handleOverdueTileClick} />
             </div>
 
             {/* Partner filter chips */}
-            <div className="no-print flex items-center gap-2 mb-5 flex-wrap">
+            <div ref={activeSectionRef} className="no-print flex items-center gap-2 mb-5 flex-wrap">
               {['All', ...partners].map(p => (
                 <button
                   key={p}
@@ -338,12 +362,21 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   {p}
                 </button>
               ))}
+              {attentionFilter !== 'all' && (
+                <button
+                  onClick={() => setAttentionFilter('all')}
+                  className="text-[12.5px] font-medium px-3.5 py-1.5 rounded-full transition-colors"
+                  style={{ background: '#fbeee9', color: 'var(--rust)', border: '1px solid #f0c9ba' }}
+                >
+                  {attentionFilter === 'raid' ? 'Open RAID' : 'Overdue'} only ×
+                </button>
+              )}
             </div>
 
             {/* Partner-grouped implementation cards */}
             {partnerGroups.length === 0 ? (
               <div className="bg-white rounded-2xl p-12 text-center text-sm mb-6" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
-                No active implementations{partnerFilter !== 'All' ? ` for ${partnerFilter}` : ''}.
+                No active implementations{partnerFilter !== 'All' ? ` for ${partnerFilter}` : ''}{attentionFilter !== 'all' ? ' matching this filter' : ''}.
               </div>
             ) : (
               partnerGroups.map(group => (
@@ -363,7 +396,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 
             {/* Pending — set up in the portal, not yet signed with Bloomreach. Shown expanded: unlike Completed, these still need action. */}
             {pendingImpls.length > 0 && (
-              <div className="mb-8">
+              <div ref={pendingSectionRef} className="mb-8">
                 <div className="flex items-baseline gap-2.5 mb-3">
                   <h3 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Pending — not yet signed</h3>
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>{pendingImpls.length} implementation{pendingImpls.length !== 1 ? 's' : ''}</span>
@@ -378,7 +411,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
 
             {/* Closed — collapsed by default */}
             {completedImpls.length > 0 && (
-              <div>
+              <div ref={closedSectionRef}>
                 <button
                   onClick={() => setShowCompleted(v => !v)}
                   className="no-print flex items-center gap-2 text-sm font-medium hover:opacity-70"
@@ -446,6 +479,28 @@ function ImplCard({ impl, tpKeys, qaKeys }) {
         <span className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>View →</span>
       </div>
     </Link>
+  )
+}
+
+function StatTile({ label, value, warn, active, onClick }) {
+  const disabled = value === 0
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="no-print text-left bg-white rounded-xl flex items-center justify-between transition-colors"
+      style={{
+        border: active ? '1px solid var(--gold-dark)' : '1px solid var(--hairline)',
+        background: active ? '#FFFCE8' : '#fff',
+        padding: '12px 16px',
+        opacity: disabled ? 0.55 : 1,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      <span className="text-[12.5px]" style={{ color: 'var(--muted)' }}>{label}</span>
+      <span className="font-mono text-[15px] font-semibold" style={{ color: warn ? 'var(--rust)' : 'var(--ink)' }}>{value}</span>
+    </button>
   )
 }
 
