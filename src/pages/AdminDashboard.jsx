@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   getAllImplementations, addImplementation, getPendingSignups, approveSignup,
-  declineSignup, getStepDefinitions, DEFAULT_STEPS, IMPLEMENTATION_STATUSES,
+  declineSignup, getStepDefinitions, DEFAULT_STEPS, IMPLEMENTATION_STATUSES, USAGE_METERS,
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
@@ -30,6 +30,28 @@ function isOverdue(impl) {
   return new Date(impl.planned_completion_date) < new Date()
 }
 
+// Contracted billing meters are manual entry (no API source) — flag when
+// they're missing, look mismatched for the client's pricing model, or
+// haven't been touched in a while, so someone goes and checks them.
+const STALE_USAGE_DAYS = 60
+
+function usageIssue(impl) {
+  const required = USAGE_METERS[impl.pricingModel] || USAGE_METERS.profiles
+  const other = USAGE_METERS[impl.pricingModel === 'profiles' ? 'events' : 'profiles']
+  const metrics = impl.usageMetrics || {}
+
+  const missing = required.filter(m => metrics[m.key]?.value == null || metrics[m.key]?.limit == null)
+  if (missing.length) return `missing ${missing.map(m => m.label).join(', ')}`
+
+  const wrongModel = other.filter(m => metrics[m.key]?.value != null)
+  if (wrongModel.length) return `has ${impl.pricingModel === 'profiles' ? 'event' : 'profile'} data despite being on the ${impl.pricingModel} model`
+
+  const stalest = required.map(m => metrics[m.key]?.updatedAt).filter(Boolean).sort()[0]
+  if (stalest && (Date.now() - new Date(stalest)) / 86400000 > STALE_USAGE_DAYS) return `stale (last updated over ${STALE_USAGE_DAYS} days ago)`
+
+  return null
+}
+
 const EMPTY_FORM = { emails: '', partner_name: '', client_name: '', slackChannelId: '' }
 
 export default function AdminDashboard({ credential, userInfo, onLogout }) {
@@ -45,7 +67,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState(null)
   const [partnerFilter, setPartnerFilter] = useState('All')
-  const [attentionFilter, setAttentionFilter] = useState('all') // 'all' | 'raid' | 'overdue'
+  const [attentionFilter, setAttentionFilter] = useState('all') // 'all' | 'raid' | 'overdue' | 'usage'
   const [showCompleted, setShowCompleted] = useState(false)
   const [pending, setPending] = useState([])
   const [steps, setSteps] = useState(DEFAULT_STEPS)
@@ -144,6 +166,10 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
     setAttentionFilter(f => f === 'overdue' ? 'all' : 'overdue')
     scrollToSection(activeSectionRef)
   }
+  function handleUsageTileClick() {
+    setAttentionFilter(f => f === 'usage' ? 'all' : 'usage')
+    scrollToSection(activeSectionRef)
+  }
 
   const activeImpls = implementations.filter(i => i.status === 'active' || !i.status)
   const pendingImpls = implementations.filter(i => i.status === 'pending')
@@ -151,11 +177,17 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const partners = Array.from(new Set(activeImpls.map(i => i.partner_name).filter(Boolean))).sort()
   const totalOpenRaid = implementations.reduce((sum, i) => sum + openRaidCount(i), 0)
   const overdueCount = activeImpls.filter(isOverdue).length
-  const hasAttention = overdueCount > 0 || totalOpenRaid > 0
+  const usageIssueCount = activeImpls.filter(usageIssue).length
+  const hasAttention = overdueCount > 0 || totalOpenRaid > 0 || usageIssueCount > 0
 
+  const ATTENTION_PREDICATES = {
+    raid: i => openRaidCount(i) > 0,
+    overdue: isOverdue,
+    usage: i => !!usageIssue(i),
+  }
   const filteredActive = activeImpls
     .filter(i => partnerFilter === 'All' || i.partner_name === partnerFilter)
-    .filter(i => attentionFilter === 'all' || (attentionFilter === 'raid' ? openRaidCount(i) > 0 : isOverdue(i)))
+    .filter(i => attentionFilter === 'all' || ATTENTION_PREDICATES[attentionFilter](i))
   const groupNames = partnerFilter === 'All' ? partners : [partnerFilter]
   const partnerGroups = groupNames.map(name => {
     const impls = filteredActive.filter(i => i.partner_name === name)
@@ -321,7 +353,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               <div className="no-print flex items-center gap-3 rounded-2xl mb-5" style={{ background: '#fbeee9', border: '1px solid #f0c9ba', padding: '14px 18px' }}>
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'var(--rust)' }} />
                 <p className="text-[13.5px] font-medium m-0" style={{ color: '#8a3018' }}>
-                  {overdueCount} overdue implementation{overdueCount !== 1 ? 's' : ''} · {totalOpenRaid} open RAID item{totalOpenRaid !== 1 ? 's' : ''} need attention
+                  {overdueCount} overdue implementation{overdueCount !== 1 ? 's' : ''} · {totalOpenRaid} open RAID item{totalOpenRaid !== 1 ? 's' : ''} · {usageIssueCount} implementation{usageIssueCount !== 1 ? 's' : ''} with usage data needing review
                 </p>
               </div>
             )}
@@ -346,6 +378,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               <StatTile label="Closed" value={completedImpls.length} onClick={handleClosedTileClick} />
               <StatTile label="Open RAID" value={totalOpenRaid} warn={totalOpenRaid > 0} active={attentionFilter === 'raid'} onClick={handleRaidTileClick} />
               <StatTile label="Overdue" value={overdueCount} warn={overdueCount > 0} active={attentionFilter === 'overdue'} onClick={handleOverdueTileClick} />
+              <StatTile label="Usage" value={usageIssueCount} warn={usageIssueCount > 0} active={attentionFilter === 'usage'} onClick={handleUsageTileClick} />
             </div>
 
             {/* Partner filter chips */}
@@ -368,7 +401,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   className="text-[12.5px] font-medium px-3.5 py-1.5 rounded-full transition-colors"
                   style={{ background: '#fbeee9', color: 'var(--rust)', border: '1px solid #f0c9ba' }}
                 >
-                  {attentionFilter === 'raid' ? 'Open RAID' : 'Overdue'} only ×
+                  {{ raid: 'Open RAID', overdue: 'Overdue', usage: 'Usage' }[attentionFilter]} only ×
                 </button>
               )}
             </div>
@@ -442,6 +475,7 @@ function ImplCard({ impl, tpKeys, qaKeys }) {
   const progress = getProgress(impl, tpKeys)
   const qa = getQAProgress(impl, qaKeys)
   const openRaid = openRaidCount(impl)
+  const usageProblem = usageIssue(impl)
   return (
     <Link
       to={`/admin/implementation/${impl.id}`}
@@ -459,6 +493,11 @@ function ImplCard({ impl, tpKeys, qaKeys }) {
       {openRaid > 0 && (
         <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded" style={{ background: 'var(--rust-bg)', color: 'var(--rust)' }}>
           {openRaid} open RAID
+        </span>
+      )}
+      {usageProblem && (
+        <span className="inline-block mt-1.5 ml-1.5 text-[11px] font-semibold px-2 py-0.5 rounded" style={{ background: '#FFFCE8', color: '#8A7A00' }}>
+          Usage: {usageProblem}
         </span>
       )}
       <div className="mt-3">

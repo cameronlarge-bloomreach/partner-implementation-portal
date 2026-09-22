@@ -11,6 +11,8 @@ export const CHANGELOG = [
       'Portal is now live at bloomreach-blimp.com, its own domain.',
       'Switched to the Bloomreach Sans typeface across the whole app.',
       'Dashboard stat tiles (Active / Pending / Closed / Open RAID / Overdue) are now clickable — they jump to or filter the implementation list.',
+      'A "what\'s new" pop-up (this one) now shows admins what changed after each update.',
+      'New "Usage" health check flags implementations whose contracted usage data is missing, mismatched for their pricing model, or hasn\'t been updated in over 60 days.',
     ],
   },
 ]
