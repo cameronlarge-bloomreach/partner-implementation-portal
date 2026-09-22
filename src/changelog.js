@@ -13,6 +13,7 @@ export const CHANGELOG = [
       'Dashboard stat tiles (Active / Pending / Closed / Open RAID / Overdue) are now clickable — they jump to or filter the implementation list.',
       'A "what\'s new" pop-up (this one) now shows admins what changed after each update.',
       'New "Usage" health check flags implementations whose contracted usage data is missing, mismatched for their pricing model, or hasn\'t been updated in over 60 days.',
+      'Admins can now upload a Sales Order PDF and have usage limits extracted automatically for review (Setup tab → Scope of Work → "Extract usage limits" on a PDF) — nothing saves until you confirm each value.',
     ],
   },
 ]
