@@ -315,6 +315,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [savingPricing, setSavingPricing] = useState(false)
   const [savingRegion, setSavingRegion] = useState(false)
   const [extracting, setExtracting] = useState(null) // doc being extracted, while in flight
+  const [extractSeconds, setExtractSeconds] = useState(0)
   const [extractError, setExtractError] = useState(null)
   const [review, setReview] = useState(null) // { doc, metrics } once extraction returns
   const [expandedNote, setExpandedNote] = useState(null)
@@ -491,8 +492,12 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
   async function handleExtractUsage(doc) {
     setExtracting(doc.id)
+    setExtractSeconds(0)
     setExtractError(null)
+    const started = Date.now()
+    const ticker = setInterval(() => setExtractSeconds(Math.floor((Date.now() - started) / 1000)), 1000)
     const res = await extractContractLimits(credential, id, doc.file_path)
+    clearInterval(ticker)
     setExtracting(null)
     if (res.error) { setExtractError(res.error); return }
     setReview({ doc, metrics: res.metrics })
@@ -915,7 +920,14 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                 <SectionTitle>Scope of Work</SectionTitle>
                 <p className="text-xs -mt-2.5 mb-3" style={{ color: 'var(--muted)' }}>The partner's SOW and any related documents. Visible to the partner on their Overview tab.</p>
                 <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} onExtractUsage={isAdmin ? handleExtractUsage : undefined} />
-                {extracting && <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>Reading contract and extracting usage limits — this can take a little while…</p>}
+                {extracting && (
+                  <div className="mt-2.5">
+                    <p className="text-xs mb-1.5" style={{ color: 'var(--muted)' }}>
+                      Reading contract and extracting usage limits… {extractSeconds > 0 && `(${extractSeconds}s)`}
+                    </p>
+                    <div className="indeterminate-bar h-1.5 w-full max-w-xs rounded-full" />
+                  </div>
+                )}
                 {extractError && <p className="text-xs mt-2" style={{ color: 'var(--rust)' }}>{extractError}</p>}
               </Card>
             )}
