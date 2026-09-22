@@ -1,28 +1,35 @@
 // Reads an already-uploaded contract PDF (from the implementation-docs
-// Storage bucket) and proposes usage_metrics limits via the Anthropic API.
-// Deliberately proposes LIMITS ONLY — never a usage_value, never a
+// Storage bucket) and proposes usage_metrics limits — via free, rule-based
+// text extraction against Bloomreach's own Sales Order template, not an
+// LLM. Deliberately proposes LIMITS ONLY — never a usage_value, never a
 // pricing_model change — and never writes to the database itself. The
 // caller (ContractReviewModal.jsx) shows every proposed value next to its
 // raw printed text for a human to confirm before anything is saved, via
-// the existing upsertUsageMetric. Treat this function's own LLM output as
-// untrusted: it's validated against the known metric_key enum below before
-// being returned to the frontend at all.
+// the existing upsertUsageMetric.
 //
-// Requires the ANTHROPIC_API_KEY secret (Project Settings → Edge Functions
-// → Secrets in the Supabase dashboard — never committed, never sent to the
-// browser). Cameron generates this himself at console.anthropic.com.
+// Patterns below were derived directly from a real Sales Order (Dubai
+// Racing, a "profiles" pricing model contract) — verified against its raw
+// extracted text before being written as regexes, not guessed. That's also
+// this approach's real limitation: it only reliably covers the shape of
+// contract it was built against. `processed_events`/`max_event_storage`
+// (events-model fields) and a few edge cases have no verified pattern yet
+// — they intentionally return found:false rather than a guessed regex, so
+// an untested case fails safe instead of silently wrong. Extend the
+// patterns once a real events-model contract (or other shape) is seen,
+// the same way these were built: extract its raw text first, look at it,
+// then write the pattern — don't write one blind.
+//
+// Previously called the Anthropic API for this (understood context, more
+// robust to template variation, but had a per-call cost) — replaced
+// 2026-09-22 at Cameron's request to eliminate that cost. If extraction
+// quality on new contract shapes turns out too unreliable, that's the
+// natural fallback to revisit, not a dead end.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { encodeBase64 } from 'jsr:@std/encoding@1/base64'
+import { extractText, getDocumentProxy } from 'npm:unpdf@1'
 
 const DOCS_BUCKET = 'implementation-docs'
-const MAX_PDF_BYTES = 20 * 1024 * 1024 // stay well under Anthropic's document limits
-
-const KNOWN_METRIC_KEYS = [
-  'billable_profiles', 'muv', 'processed_events', 'max_event_storage',
-  'profile_updates', 'monthly_event_storage', 'email_orchestrations',
-  'mobile_message_orchestrations', 'committed_email_usage',
-]
+const MAX_PDF_BYTES = 20 * 1024 * 1024
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -36,36 +43,88 @@ function json(body: unknown, status = 200) {
   })
 }
 
-const EXTRACTION_PROMPT = `You are extracting contracted usage limits from a Bloomreach Sales Order / contract PDF, for a partner-implementation tracking tool. Return ONLY valid JSON (no markdown fences, no commentary) matching exactly this schema:
-
-{
-  "metrics": [
-    {
-      "metric_key": "<one of: billable_profiles, muv, processed_events, max_event_storage, profile_updates, monthly_event_storage, email_orchestrations, mobile_message_orchestrations, committed_email_usage — or null if this metric doesn't match any of those>",
-      "label": "<required only when metric_key is null — a short human label for what this contracted metric is>",
-      "found": true or false,
-      "raw_text": "<the exact text as printed in the document for this figure, verbatim, or null if not found>",
-      "interpreted_value": <the number this represents, or null if not found or genuinely unclear>,
-      "interpretation_note": "<explain any conversion you applied, e.g. 'CPQ shorthand: printed value is in thousands'; empty string if no conversion was needed>",
-      "source_quote": "<a short surrounding quote from the document giving context for this figure>"
-    }
-  ]
+type Metric = {
+  metricKey: string | null
+  label: string | null
+  found: boolean
+  rawText: string | null
+  interpretedValue: number | null
+  interpretationNote: string
+  sourceQuote: string
 }
 
-Rules:
-1. Always include exactly one entry for each of the 9 known metric_key values above, even if not found in the document (set found:false, raw_text:null, interpreted_value:null in that case).
-2. Additionally include one entry per any OTHER contracted usage/allowance metric you find in the document that doesn't match any of the 9 known keys — set metric_key:null and fill in label instead.
-3. IMPORTANT — known convention: Bloomreach Sales Orders sometimes state the "Billable Profiles" and "MUV" Licensed Limits in CPQ shorthand where the printed number is in thousands (e.g. a printed "Up to 250" means 250,000; "Up to 325" means 325,000). If you see a suspiciously small number (under roughly 10,000) specifically for billable_profiles or muv in a "Licensed Limits" / "Platform" table, treat it as likely stated in thousands: set interpreted_value to raw × 1000, and clearly say so in interpretation_note. Still put the literal unconverted text in raw_text.
-4. For metrics whose "Total Allowance" is already stated "in millions" (a common table format for allowances like Profile Updates, Event Storage, Email/Mobile Orchestrations), interpreted_value should be the actual number (e.g. a table value of "4.875" under a "(in millions)" column header means interpreted_value: 4875000).
-5. Do not guess when a figure's meaning is genuinely ambiguous — set found:false and interpreted_value:null rather than fabricate a number.
-6. Never propose a pricing model or anything other than usage limits.`
+function notFound(metricKey: string): Metric {
+  return { metricKey, label: null, found: false, rawText: null, interpretedValue: null, interpretationNote: '', sourceQuote: '' }
+}
+
+// Billable Profiles / MUV Licensed Limits are always printed in CPQ
+// thousands-shorthand in this table ("Up to 325" means 325,000) — a fixed
+// convention Cameron confirmed directly, not a per-value heuristic guess.
+function extractLicensedLimit(text: string, metricKey: string, label: string): Metric {
+  const re = new RegExp(`${label}\\s*:?\\s*Up to\\s+([\\d,]+)`, 'i')
+  const m = text.match(re)
+  if (!m) return notFound(metricKey)
+  const raw = m[1]
+  const value = Number(raw.replace(/,/g, '')) * 1000
+  return {
+    metricKey, label: null, found: true, rawText: `Up to ${raw}`, interpretedValue: value,
+    interpretationNote: 'CPQ shorthand: Licensed Limits are printed in thousands',
+    sourceQuote: m[0].replace(/\s+/g, ' ').trim(),
+  }
+}
+
+// Platform Allowances table rows: "<Metric> Year <n> <per-profile> <total, in millions> <period>".
+// Period is restricted to the two values the contract's own terms name
+// ("Monthly Entitlement"/"Annual Entitlement") rather than a generic \w+ —
+// a real run against the Dubai Racing contract showed \w+ greedily bleeding
+// into the next page's "Docusign Envelope ID" footer with no whitespace
+// between them in the extracted text ("AnnualDocusign").
+function extractAllowance(text: string, metricKey: string, label: string): Metric {
+  const re = new RegExp(`${label}\\s+Year\\s+\\d+\\s+\\d+\\s+([\\d.]+)\\s+(Monthly|Annual)`, 'i')
+  const m = text.match(re)
+  if (!m) return notFound(metricKey)
+  const raw = m[1]
+  const period = m[2]
+  const value = Number(raw) * 1_000_000
+  return {
+    metricKey, label: null, found: true, rawText: raw, interpretedValue: value,
+    interpretationNote: `Table column is "Total Allowance (in millions)", ${period} entitlement period`,
+    sourceQuote: m[0].replace(/\s+/g, ' ').trim(),
+  }
+}
+
+// Communications table: "Email-Email Committed Usage ... 1000\nEmails\n<qty> $x.xx $y.yy".
+function extractCommittedEmailUsage(text: string): Metric {
+  const re = /Email-Email Committed Usage.*?1000\s*Emails\s*([\d,]+)/is
+  const m = text.match(re)
+  if (!m) return notFound('committed_email_usage')
+  const raw = m[1]
+  const value = Number(raw.replace(/,/g, '')) * 1000
+  return {
+    metricKey: 'committed_email_usage', label: null, found: true, rawText: `${raw} x 1000 Emails`, interpretedValue: value,
+    interpretationNote: 'Qty x 1000-email unit of measure',
+    sourceQuote: m[0].replace(/\s+/g, ' ').trim(),
+  }
+}
+
+function extractAll(text: string): Metric[] {
+  return [
+    extractLicensedLimit(text, 'billable_profiles', 'Billable\\s*Profiles'),
+    extractLicensedLimit(text, 'muv', 'MUV'),
+    // No verified pattern yet for an events-model Sales Order — see file header.
+    notFound('processed_events'),
+    notFound('max_event_storage'),
+    extractAllowance(text, 'profile_updates', 'Profile Updates'),
+    extractAllowance(text, 'monthly_event_storage', 'Event storage'),
+    extractAllowance(text, 'email_orchestrations', 'Email Orchestrations'),
+    extractAllowance(text, 'mobile_message_orchestrations', 'Mobile Message\\s*Orchestrations'),
+    extractCommittedEmailUsage(text),
+  ]
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405)
-
-  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
-  if (!anthropicKey) return json({ error: 'Contract extraction is not configured on the server yet.' }, 500)
 
   const authHeader = req.headers.get('Authorization') ?? ''
   const supabase = createClient(
@@ -84,8 +143,6 @@ Deno.serve(async (req) => {
   const implementationId = String(body.implementationId || '').trim()
   const filePath = String(body.filePath || '').trim()
   if (!implementationId || !filePath) return json({ error: 'implementationId and filePath are required.' }, 400)
-  // The path's first segment must match implementationId — same convention
-  // Storage RLS itself enforces, checked again here defensively.
   if (!filePath.startsWith(`${implementationId}/`)) return json({ error: 'filePath does not belong to this implementation.' }, 400)
 
   const { data: fileBlob, error: dlErr } = await supabase.storage.from(DOCS_BUCKET).download(filePath)
@@ -94,69 +151,16 @@ Deno.serve(async (req) => {
     return json({ error: `Document is too large to auto-extract (${Math.round(fileBlob.size / 1024 / 1024)} MB, limit ${MAX_PDF_BYTES / 1024 / 1024} MB).` }, 413)
   }
 
-  const bytes = new Uint8Array(await fileBlob.arrayBuffer())
-  const base64Pdf = encodeBase64(bytes) // chunked encoder — plain btoa(String.fromCharCode(...)) throws on files this size
-
-  const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': anthropicKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-5',
-      max_tokens: 8192, // 9 required metrics + any unmapped ones, each with several string fields — 4096 risked truncation
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64Pdf } },
-          { type: 'text', text: EXTRACTION_PROMPT },
-        ],
-      }],
-    }),
-  })
-
-  if (!anthropicRes.ok) {
-    const detail = await anthropicRes.text().catch(() => '')
-    return json({ error: `Extraction failed (${anthropicRes.status}).`, detail }, 502)
-  }
-
-  const anthropicData = await anthropicRes.json()
-  const rawText = anthropicData?.content?.map((b: { text?: string }) => b.text || '').join('') || ''
-  let parsed: { metrics?: unknown[] }
+  let text: string
   try {
-    // Strip a stray ```json fence if the model added one despite instructions.
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
-    parsed = JSON.parse(cleaned)
+    const bytes = new Uint8Array(await fileBlob.arrayBuffer())
+    const doc = await getDocumentProxy(bytes)
+    const result = await extractText(doc, { mergePages: true })
+    text = result.text
   } catch (e) {
-    return json({
-      error: 'Extraction did not return valid JSON — try again or enter limits manually.',
-      detail: rawText.slice(0, 4000),
-      stopReason: anthropicData?.stop_reason,
-      parseError: e instanceof Error ? e.message : String(e),
-    }, 502)
+    return json({ error: `Could not read text from this PDF (${e instanceof Error ? e.message : String(e)}).` }, 502)
   }
 
-  // Validate every entry before it ever reaches the frontend — the model's
-  // JSON is untrusted output, same as any other external input.
-  const metrics = (Array.isArray(parsed.metrics) ? parsed.metrics : [])
-    .map((m) => {
-      const row = m as Record<string, unknown>
-      const metricKey = typeof row.metric_key === 'string' && KNOWN_METRIC_KEYS.includes(row.metric_key) ? row.metric_key : null
-      const interpretedValue = typeof row.interpreted_value === 'number' && Number.isFinite(row.interpreted_value) && row.interpreted_value >= 0
-        ? row.interpreted_value : null
-      return {
-        metricKey,
-        label: typeof row.label === 'string' ? row.label : null,
-        found: !!row.found,
-        rawText: typeof row.raw_text === 'string' ? row.raw_text : null,
-        interpretedValue,
-        interpretationNote: typeof row.interpretation_note === 'string' ? row.interpretation_note : '',
-        sourceQuote: typeof row.source_quote === 'string' ? row.source_quote : '',
-      }
-    })
-    .filter((m) => m.metricKey || m.label) // drop anything with neither a known key nor a label — nothing useful to show
-
+  const metrics = extractAll(text).filter((m) => m.metricKey || m.label)
   return json({ ok: true, metrics })
 })
