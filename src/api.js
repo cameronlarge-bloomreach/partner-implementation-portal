@@ -72,11 +72,29 @@ export const USAGE_METERS = {
   ],
 }
 
-// Map of metric_key -> { value, limit, updatedAt } for one implementation.
+// Contract allowances beyond the two core billing meters — apply regardless
+// of pricing model (a "profiles" client can still have these in their Sales
+// Order). Limit-only: nobody hand-tracks actual usage against these day to
+// day, so unlike USAGE_METERS they don't get a paired usage input.
+export const CONTRACT_ALLOWANCES = [
+  { key: 'profile_updates', label: 'Profile Updates', hint: 'monthly cumulative' },
+  { key: 'monthly_event_storage', label: 'Event Storage', hint: 'monthly avg daily volume' },
+  { key: 'email_orchestrations', label: 'Email Orchestrations', hint: 'annual' },
+  { key: 'mobile_message_orchestrations', label: 'Mobile Message Orchestrations', hint: 'annual' },
+  { key: 'committed_email_usage', label: 'Committed Email Usage', hint: 'contract term' },
+]
+
+// Map of metric_key -> { value, limit, updatedAt, source, sourceDocumentId } for one implementation.
 function shapeMetrics(rows) {
   const out = {}
   for (const r of rows || []) {
-    out[r.metric_key] = { value: r.usage_value ?? null, limit: r.usage_limit ?? null, updatedAt: r.updated_at }
+    out[r.metric_key] = {
+      value: r.usage_value ?? null,
+      limit: r.usage_limit ?? null,
+      updatedAt: r.updated_at,
+      source: r.source || 'manual',
+      sourceDocumentId: r.source_document_id || null,
+    }
   }
   return out
 }
@@ -505,15 +523,32 @@ export async function updateUsageLimit(_token, implementationId, field, value) {
 }
 
 // Upsert one billing meter's usage and/or limit. Pass null to clear a field.
-export async function upsertUsageMetric(_token, implementationId, metricKey, { value, limit }) {
+// source/sourceDocumentId default to a manual edit; contract extraction
+// passes 'contract_extraction' + the document id so the number's origin
+// isn't lost the moment it lands in the table.
+export async function upsertUsageMetric(_token, implementationId, metricKey, { value, limit, source, sourceDocumentId }) {
   const { error } = await supabase.from('usage_metrics').upsert({
     implementation_id: implementationId,
     metric_key: metricKey,
     usage_value: value ?? null,
     usage_limit: limit ?? null,
     updated_at: new Date().toISOString(),
+    source: source || 'manual',
+    source_document_id: sourceDocumentId ?? null,
   }, { onConflict: 'implementation_id,metric_key' })
   return error ? fail(error) : { ok: true }
+}
+
+// Calls the extract-contract-limits Edge Function to read a previously-
+// uploaded contract PDF and propose usage limits. Never writes anything
+// itself — the caller reviews and confirms via upsertUsageMetric per field.
+export async function extractContractLimits(_token, implementationId, filePath) {
+  const { data, error } = await supabase.functions.invoke('extract-contract-limits', {
+    body: { implementationId, filePath },
+  })
+  if (error) return fail(error)
+  if (data?.error) return { error: data.error }
+  return { ok: true, metrics: data.metrics || [] }
 }
 
 export async function updateBloomreachOrgLink(_token, implementationId, orgId, orgName) {

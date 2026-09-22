@@ -10,7 +10,9 @@ function fmtSize(bytes) {
 
 // Uploaded documents (e.g. partner SOW) for one implementation.
 // editable=true → admin upload/delete; editable=false → partner download only.
-export default function ImplementationDocuments({ credential, implementationId, documents, editable, onChange }) {
+// onExtractUsage(doc) is optional — when provided, PDF rows get an "Extract
+// usage limits" action (e.g. to read a Sales Order contract).
+export default function ImplementationDocuments({ credential, implementationId, documents, editable, onChange, onExtractUsage }) {
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState(null)
@@ -84,6 +86,9 @@ export default function ImplementationDocuments({ credential, implementationId, 
               <span className="ml-auto shrink-0 font-mono text-[11px]" style={{ color: 'var(--muted)' }}>
                 {doc.url ? 'link' : fmtSize(doc.file_size)}
               </span>
+              {editable && onExtractUsage && doc.content_type === 'application/pdf' && (
+                <button className="shrink-0 text-xs font-medium" style={{ color: 'var(--arctic)' }} onClick={() => onExtractUsage(doc)}>Extract usage limits</button>
+              )}
               {editable && (
                 <button className="shrink-0 text-xs" style={{ color: 'var(--rust)' }} onClick={() => remove(doc)}>Remove</button>
               )}

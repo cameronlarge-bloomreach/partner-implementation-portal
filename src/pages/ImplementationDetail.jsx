@@ -7,6 +7,7 @@ import {
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, updatePSM,
   updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
+  CONTRACT_ALLOWANCES, extractContractLimits,
   IMPLEMENTATION_STATUSES,
 } from '../api'
 import Navbar from '../components/Navbar'
@@ -15,6 +16,7 @@ import ImplementationDocuments from '../components/ImplementationDocuments'
 import ProgressRing from '../components/ProgressRing'
 import QAWorkbookModal from '../components/QAWorkbookModal'
 import RaiseTicketModal from '../components/RaiseTicketModal'
+import ContractReviewModal from '../components/ContractReviewModal'
 import { QA_WORKBOOKS } from '../qaWorkbooks'
 
 const DATE_FIELDS = [
@@ -182,6 +184,56 @@ function MeterEditor({ meter, data, onSave, editable = true }) {
   )
 }
 
+// Edits one contract allowance — limit only, no paired usage figure. Nobody
+// hand-tracks actual usage against these day to day, unlike MeterEditor's
+// meters, so no utilisation bar either — that would just show a permanent
+// dash and imply monitoring that isn't happening.
+function AllowanceRow({ meter, data, onSave, editable = true }) {
+  const [limit, setLimit] = useState(data?.limit ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  // Same sync-on-external-change shape as MeterEditor's effect above —
+  // a key-based remount was tried instead but it also fires on this row's
+  // own optimistic save (patchImpl updates the same prop that would key
+  // it), which unmounts the row before the "Saved" flash can show. This is
+  // the correct behavior, just not the eslint-preferred shape; matches the
+  // pre-existing, already-accepted pattern this component was modeled on.
+  useEffect(() => { setLimit(data?.limit ?? '') }, [data?.limit])
+
+  async function save(e) {
+    e.preventDefault()
+    setSaving(true)
+    const res = await onSave(limit === '' ? null : Number(limit))
+    setSaving(false)
+    if (!res?.error) { setSaved(true); setTimeout(() => setSaved(false), 1500) }
+  }
+
+  return (
+    <form onSubmit={save} className="rounded-lg p-3" style={{ border: '1px solid var(--hairline)' }}>
+      <div className="flex items-baseline justify-between mb-1.5">
+        <span className="text-xs font-medium" style={{ color: 'var(--ink)' }}>{meter.label}</span>
+        <span className="text-[10px]" style={{ color: 'var(--muted)' }}>{meter.hint}</span>
+      </div>
+      <div className="flex items-end gap-2 flex-wrap">
+        <label className="flex flex-col">
+          <span className="text-[10px] mb-0.5" style={{ color: 'var(--muted)' }}>Limit</span>
+          <input type="number" min="0" value={limit} disabled={!editable} onChange={e => setLimit(e.target.value)} placeholder="—"
+            className="w-40 font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
+        </label>
+        {editable && (
+          <button type="submit" disabled={saving} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
+            {saving ? 'Saving…' : saved ? 'Saved' : 'Save'}
+          </button>
+        )}
+        {data?.source === 'contract_extraction' && (
+          <span className="text-[10px]" style={{ color: 'var(--muted)' }}>from uploaded contract</span>
+        )}
+      </div>
+    </form>
+  )
+}
+
 export default function ImplementationDetail({ credential, userInfo, onLogout }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -262,6 +314,9 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [savingOrgLink, setSavingOrgLink] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
   const [savingRegion, setSavingRegion] = useState(false)
+  const [extracting, setExtracting] = useState(null) // doc being extracted, while in flight
+  const [extractError, setExtractError] = useState(null)
+  const [review, setReview] = useState(null) // { doc, metrics } once extraction returns
   const [expandedNote, setExpandedNote] = useState(null)
   const [showAddNote, setShowAddNote] = useState(false)
   const [newNote, setNewNote] = useState(EMPTY_NOTE)
@@ -424,6 +479,29 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       patchImpl({ usageMetrics: { ...(impl.usageMetrics || {}), [metricKey]: { value, limit, updatedAt: new Date().toISOString() } } })
     }
     return res
+  }
+
+  async function saveAllowance(metricKey, limit) {
+    const res = await upsertUsageMetric(credential, id, metricKey, { value: null, limit })
+    if (!res.error) {
+      patchImpl({ usageMetrics: { ...(impl.usageMetrics || {}), [metricKey]: { value: null, limit, updatedAt: new Date().toISOString() } } })
+    }
+    return res
+  }
+
+  async function handleExtractUsage(doc) {
+    setExtracting(doc.id)
+    setExtractError(null)
+    const res = await extractContractLimits(credential, id, doc.file_path)
+    setExtracting(null)
+    if (res.error) { setExtractError(res.error); return }
+    setReview({ doc, metrics: res.metrics })
+  }
+
+  // Re-fetch after the review modal saves — simplest way to reflect
+  // whichever metrics were confirmed without duplicating its save logic here.
+  function handleContractSaved() {
+    getImplementation(credential, id).then(data => { if (!data.error) setImpl(data) })
   }
 
   async function handleSaveOrgLink(e) {
@@ -836,7 +914,9 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               <Card>
                 <SectionTitle>Scope of Work</SectionTitle>
                 <p className="text-xs -mt-2.5 mb-3" style={{ color: 'var(--muted)' }}>The partner's SOW and any related documents. Visible to the partner on their Overview tab.</p>
-                <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} />
+                <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} onExtractUsage={isAdmin ? handleExtractUsage : undefined} />
+                {extracting && <p className="text-xs mt-2" style={{ color: 'var(--muted)' }}>Reading contract and extracting usage limits — this can take a little while…</p>}
+                {extractError && <p className="text-xs mt-2" style={{ color: 'var(--rust)' }}>{extractError}</p>}
               </Card>
             )}
 
@@ -1014,6 +1094,13 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                           </span>
                         ) : null}
                       </p>
+
+                      <p className="text-[10px] font-medium uppercase tracking-widest mt-4 mb-1.5" style={{ color: 'var(--muted)' }}>Other contract allowances</p>
+                      <div className="space-y-3">
+                        {CONTRACT_ALLOWANCES.map(meter => (
+                          <AllowanceRow key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} editable={isAdmin} onSave={limit => saveAllowance(meter.key, limit)} />
+                        ))}
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -1133,6 +1220,18 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           psmEmail={impl.psmEmail}
           onClose={() => setRaisingTicketStep(null)}
           onRaised={ticket => setRaisedTickets(prev => ({ ...prev, [raisingTicketStep]: ticket }))}
+        />
+      )}
+
+      {review && (
+        <ContractReviewModal
+          credential={credential}
+          implementationId={id}
+          doc={review.doc}
+          metrics={review.metrics}
+          currentUsageMetrics={impl.usageMetrics}
+          onClose={() => setReview(null)}
+          onSaved={handleContractSaved}
         />
       )}
     </div>
