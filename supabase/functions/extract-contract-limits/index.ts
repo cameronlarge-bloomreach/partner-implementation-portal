@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     },
     body: JSON.stringify({
       model: 'claude-sonnet-5',
-      max_tokens: 4096,
+      max_tokens: 8192, // 9 required metrics + any unmapped ones, each with several string fields — 4096 risked truncation
       messages: [{
         role: 'user',
         content: [
@@ -123,14 +123,19 @@ Deno.serve(async (req) => {
   }
 
   const anthropicData = await anthropicRes.json()
-  const rawText = anthropicData?.content?.[0]?.text || ''
+  const rawText = anthropicData?.content?.map((b: { text?: string }) => b.text || '').join('') || ''
   let parsed: { metrics?: unknown[] }
   try {
     // Strip a stray ```json fence if the model added one despite instructions.
     const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
     parsed = JSON.parse(cleaned)
-  } catch {
-    return json({ error: 'Extraction did not return valid JSON — try again or enter limits manually.' }, 502)
+  } catch (e) {
+    return json({
+      error: 'Extraction did not return valid JSON — try again or enter limits manually.',
+      detail: rawText.slice(0, 4000),
+      stopReason: anthropicData?.stop_reason,
+      parseError: e instanceof Error ? e.message : String(e),
+    }, 502)
   }
 
   // Validate every entry before it ever reaches the frontend — the model's
