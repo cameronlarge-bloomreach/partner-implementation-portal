@@ -9,6 +9,7 @@ import PartnerSelect from './pages/PartnerSelect'
 import AdminDashboard from './pages/AdminDashboard'
 import ImplementationDetail from './pages/ImplementationDetail'
 import Analytics from './pages/Analytics'
+import WhatsNewModal from './components/WhatsNewModal'
 
 function defaultRouteFor(userInfo) {
   if (userInfo?.isAdmin || userInfo?.isSDC) return '/admin'
@@ -77,75 +78,78 @@ export default function App() {
   const credential = session?.access_token ?? null
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          credential
-            ? <Navigate to="/" replace />
-            : <Login />
-        }
-      />
-      <Route path="/verify" element={<VerifyMagicLink />} />
-      <Route
-        path="/set-password"
-        element={!credential ? <Navigate to="/login" replace /> : <SetPassword />}
-      />
-      <Route
-        path="/select"
-        element={
-          !credential
-            ? <Navigate to="/login" replace />
-            : <PartnerSelect userInfo={userInfo} onLogout={handleLogout} />
-        }
-      />
-      <Route
-        path="/implementation/:id"
-        element={
-          !credential
-            ? <Navigate to="/login" replace />
-            : <ImplementationDetail credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          !credential
-            ? <Navigate to="/login" replace />
-            : !(userInfo?.isAdmin || userInfo?.isSDC)
-            ? <Navigate to="/" replace />
-            : <AdminDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-        }
-      />
-      <Route
-        path="/admin/implementation/:id"
-        element={
-          !credential
-            ? <Navigate to="/login" replace />
-            : !(userInfo?.isAdmin || userInfo?.isSDC)
-            ? <Navigate to="/" replace />
-            : <ImplementationDetail credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-        }
-      />
-      <Route
-        path="/admin/analytics"
-        element={
-          !credential
-            ? <Navigate to="/login" replace />
-            : !userInfo?.isAdmin
-            ? <Navigate to="/" replace />
-            : <Analytics credential={credential} userInfo={userInfo} onLogout={handleLogout} />
-        }
-      />
-      <Route
-        path="/"
-        element={
-          !credential
-            ? <Navigate to="/login" replace />
-            : <Navigate to={defaultRouteFor(userInfo)} replace />
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      {userInfo?.isAdmin && <WhatsNewModal />}
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            credential
+              ? <Navigate to="/" replace />
+              : <Login />
+          }
+        />
+        <Route path="/verify" element={<VerifyMagicLink />} />
+        <Route
+          path="/set-password"
+          element={!credential ? <Navigate to="/login" replace /> : <SetPassword />}
+        />
+        <Route
+          path="/select"
+          element={
+            !credential
+              ? <Navigate to="/login" replace />
+              : <PartnerSelect userInfo={userInfo} onLogout={handleLogout} />
+          }
+        />
+        <Route
+          path="/implementation/:id"
+          element={
+            !credential
+              ? <Navigate to="/login" replace />
+              : <ImplementationDetail credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            !credential
+              ? <Navigate to="/login" replace />
+              : !(userInfo?.isAdmin || userInfo?.isSDC)
+              ? <Navigate to="/" replace />
+              : <AdminDashboard credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+          }
+        />
+        <Route
+          path="/admin/implementation/:id"
+          element={
+            !credential
+              ? <Navigate to="/login" replace />
+              : !(userInfo?.isAdmin || userInfo?.isSDC)
+              ? <Navigate to="/" replace />
+              : <ImplementationDetail credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+          }
+        />
+        <Route
+          path="/admin/analytics"
+          element={
+            !credential
+              ? <Navigate to="/login" replace />
+              : !userInfo?.isAdmin
+              ? <Navigate to="/" replace />
+              : <Analytics credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+          }
+        />
+        <Route
+          path="/"
+          element={
+            !credential
+              ? <Navigate to="/login" replace />
+              : <Navigate to={defaultRouteFor(userInfo)} replace />
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   )
 }
