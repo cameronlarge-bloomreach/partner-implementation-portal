@@ -16,4 +16,11 @@ export const CHANGELOG = [
       'Admins can now upload a Sales Order PDF and have usage limits extracted automatically for review (Setup tab → Scope of Work → "Extract usage limits" on a PDF) — nothing saves until you confirm each value.',
     ],
   },
+  {
+    version: '2026-09-23',
+    date: '23 September 2026',
+    items: [
+      'New "Generate BAU Handover" button on the Setup tab (next to the Closed status button).',
+    ],
+  },
 ]

@@ -123,6 +123,7 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails,
     partner_name: impl.partner_name,
     client_name: impl.client_name,
     status: impl.status || 'active',
+    bauHandoverStatus: canViewInternal ? (impl.bau_handover_status || 'N') : undefined,
     isAdmin,
     isSDC,
     accessEmails,
@@ -470,6 +471,15 @@ export async function updateImplementationStatus(_token, implementationId, statu
 
 export async function deleteImplementation(_token, implementationId) {
   const { error } = await supabase.from('implementations').delete().eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+// One-way flip N -> Y, read externally by whatever system consumes the BAU
+// handover trigger — the portal doesn't generate the handover itself, just
+// flags that it should happen.
+export async function triggerBauHandover(_token, implementationId) {
+  const { error } = await supabase.from('implementations')
+    .update({ bau_handover_status: 'Y' }).eq('id', implementationId)
   return error ? fail(error) : { ok: true }
 }
 

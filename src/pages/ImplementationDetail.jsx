@@ -3,7 +3,7 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   getImplementation, updateDates, updateTouchPoint,
   addAccess, removeAccess, updateImplementationStatus,
-  deleteImplementation, updateSlackChannel,
+  deleteImplementation, updateSlackChannel, triggerBauHandover,
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, updatePSM,
   updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
@@ -304,6 +304,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
   const [savingStatus, setSavingStatus] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [savingBau, setSavingBau] = useState(false)
 
   // Internal tab (admin only)
   const [editingOrgLink, setEditingOrgLink] = useState(false)
@@ -418,6 +419,17 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       setTimeout(() => setSlackSaved(false), 2000)
     } catch { /* silent */ }
     setSavingSlack(false)
+  }
+
+  async function handleTriggerBauHandover() {
+    if (impl.bauHandoverStatus === 'Y') return
+    if (!confirm(`Generate the BAU handover for "${impl.client_name}"? This can't be undone from here.`)) return
+    setSavingBau(true)
+    try {
+      await triggerBauHandover(credential, id)
+      patchImpl({ bauHandoverStatus: 'Y' })
+    } catch { /* silent */ }
+    setSavingBau(false)
   }
 
   async function handleDelete() {
@@ -962,7 +974,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   {savingStatus && <span className="text-xs -mt-3.5" style={{ color: 'var(--muted)' }}>Saving…</span>}
                 </div>
                 <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Status</p>
-                <div className="flex gap-2 mb-4">
+                <div className="flex gap-2 mb-4 flex-wrap items-center">
                   {Object.values(IMPLEMENTATION_STATUSES).map(meta => {
                     const active = (impl.status || 'active') === meta.key
                     return (
@@ -973,6 +985,13 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                       </button>
                     )
                   })}
+                  <button onClick={handleTriggerBauHandover} disabled={savingBau || impl.bauHandoverStatus === 'Y'}
+                    className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-70"
+                    style={impl.bauHandoverStatus === 'Y'
+                      ? { background: 'var(--moss-bg)', color: 'var(--moss)', border: '1px solid var(--moss)' }
+                      : { background: '#fff', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>
+                    {savingBau ? 'Generating…' : impl.bauHandoverStatus === 'Y' ? 'BAU Handover Generated ✓' : 'Generate BAU Handover'}
+                  </button>
                 </div>
                 <button onClick={handleDelete} disabled={deleting}
                   className="text-xs font-medium px-3.5 py-1.5 rounded-lg hover:bg-[var(--rust-bg)] disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--rust)', color: 'var(--rust)' }}>
