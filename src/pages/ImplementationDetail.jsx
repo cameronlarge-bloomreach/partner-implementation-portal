@@ -305,6 +305,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [savingStatus, setSavingStatus] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [savingBau, setSavingBau] = useState(false)
+  const [bauJustTriggered, setBauJustTriggered] = useState(false)
 
   // Internal tab (admin only)
   const [editingOrgLink, setEditingOrgLink] = useState(false)
@@ -422,12 +423,13 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   }
 
   async function handleTriggerBauHandover() {
-    if (impl.bauHandoverStatus === 'Y') return
-    if (!confirm(`Generate the BAU handover for "${impl.client_name}"? This can't be undone from here.`)) return
+    if (!confirm(`Generate the BAU handover for "${impl.client_name}"?`)) return
     setSavingBau(true)
     try {
       await triggerBauHandover(credential, id)
       patchImpl({ bauHandoverStatus: 'Y' })
+      setBauJustTriggered(true)
+      setTimeout(() => setBauJustTriggered(false), 2000)
     } catch { /* silent */ }
     setSavingBau(false)
   }
@@ -985,12 +987,12 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                       </button>
                     )
                   })}
-                  <button onClick={handleTriggerBauHandover} disabled={savingBau || impl.bauHandoverStatus === 'Y'}
+                  <button onClick={handleTriggerBauHandover} disabled={savingBau}
                     className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-70"
-                    style={impl.bauHandoverStatus === 'Y'
+                    style={bauJustTriggered
                       ? { background: 'var(--moss-bg)', color: 'var(--moss)', border: '1px solid var(--moss)' }
                       : { background: '#fff', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>
-                    {savingBau ? 'Generating…' : impl.bauHandoverStatus === 'Y' ? 'BAU Handover Generated ✓' : 'Generate BAU Handover'}
+                    {savingBau ? 'Generating…' : bauJustTriggered ? 'Generated ✓' : 'Generate BAU Handover'}
                   </button>
                 </div>
                 <button onClick={handleDelete} disabled={deleting}

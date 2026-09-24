@@ -474,10 +474,17 @@ export async function deleteImplementation(_token, implementationId) {
   return error ? fail(error) : { ok: true }
 }
 
-// One-way flip N -> Y, read externally by whatever system consumes the BAU
+// Flips N -> Y, read externally by whatever system consumes the BAU
 // handover trigger — the portal doesn't generate the handover itself, just
-// flags that it should happen.
+// flags that it should happen. Repeatable: always resets to 'N' first, then
+// sets 'Y', so a run that's already 'Y' still produces a real N -> Y
+// transition for anything downstream watching for the value to change
+// (a trigger/webhook watching for "still Y" wouldn't fire on a same-value
+// update).
 export async function triggerBauHandover(_token, implementationId) {
+  const { error: resetErr } = await supabase.from('implementations')
+    .update({ bau_handover_status: 'N' }).eq('id', implementationId)
+  if (resetErr) return fail(resetErr)
   const { error } = await supabase.from('implementations')
     .update({ bau_handover_status: 'Y' }).eq('id', implementationId)
   return error ? fail(error) : { ok: true }
