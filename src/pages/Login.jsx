@@ -1,15 +1,14 @@
 import { useState } from 'react'
-import { requestMagicLink, signInWithPassword, requestPasswordReset, signUp } from '../api'
+import { signInWithPassword, requestPasswordReset, signUp } from '../api'
 import bloomreachLogo from '../assets/bloomreach-logo.png'
 
 const SUBTITLES = {
   password: 'Enter your email and password',
-  link: 'Enter your email and we’ll send you a sign-in link',
   signup: 'Create an account with your work email',
 }
 
 export default function Login() {
-  const [mode, setMode] = useState('password') // 'password' | 'link' | 'signup'
+  const [mode, setMode] = useState('password') // 'password' | 'signup'
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
   const [email, setEmail] = useState('')
@@ -35,21 +34,17 @@ export default function Login() {
         const res = await signInWithPassword(email, password)
         if (res.error) {
           setError(res.error === 'Invalid login credentials'
-            ? 'Incorrect email or password. If you haven’t set a password yet, sign in with an email link first, then choose “Set password”.'
+            ? 'Incorrect email or password. If you haven’t set a password yet, use “Forgot password?” to choose one.'
             : res.error)
         }
         // On success the auth listener in App.jsx takes over.
-      } else if (mode === 'signup') {
+      } else {
         if (password.length < 8) { setError('Password must be at least 8 characters.'); setLoading(false); return }
         if (password !== confirm) { setError('Passwords don’t match.'); setLoading(false); return }
         const res = await signUp(email, password)
         if (res.error) setError(res.error)
         else if (res.needsConfirmation) setNotice(`Almost there — we sent a confirmation link to ${email}. Open it, then sign in with your new password.`)
         // If confirmation is disabled the auth listener signs them straight in.
-      } else {
-        const res = await requestMagicLink(email)
-        if (res.error) setError(res.error)
-        else setNotice(`Check your email — we sent a sign-in link to ${email}. Open it on this device to finish signing in.`)
       }
     } catch {
       setError('Something went wrong. Please try again.')
@@ -105,17 +100,15 @@ export default function Login() {
                 className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
                 style={{ border: '1px solid var(--hairline)' }}
               />
-              {mode !== 'link' && (
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder={mode === 'signup' ? 'Choose a password (min 8 characters)' : 'Password'}
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid var(--hairline)' }}
-                />
-              )}
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder={mode === 'signup' ? 'Choose a password (min 8 characters)' : 'Password'}
+                className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
+                style={{ border: '1px solid var(--hairline)' }}
+              />
               {mode === 'signup' && (
                 <input
                   type="password"
@@ -133,7 +126,7 @@ export default function Login() {
                 className="w-full disabled:opacity-50 text-sm font-medium py-2.5 rounded-lg transition-colors"
                 style={{ background: 'var(--ink)', color: '#fff' }}
               >
-                {loading ? 'Working…' : mode === 'password' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Email me a sign-in link'}
+                {loading ? 'Working…' : mode === 'password' ? 'Sign in' : 'Create account'}
               </button>
             </form>
           )}
@@ -141,15 +134,7 @@ export default function Login() {
           <div className="mt-6 space-y-2 text-sm">
             {mode !== 'signup' ? (
               <>
-                <button
-                  type="button"
-                  className="font-medium underline"
-                  style={{ color: 'var(--ink)' }}
-                  onClick={() => switchMode(mode === 'password' ? 'link' : 'password')}
-                >
-                  {mode === 'password' ? 'Email me a sign-in link instead' : 'Use a password instead'}
-                </button>
-                {mode === 'password' && !notice && (
+                {!notice && (
                   <div>
                     <button type="button" className="underline" style={{ color: 'var(--muted)' }} onClick={forgotPassword}>
                       Forgot password?
