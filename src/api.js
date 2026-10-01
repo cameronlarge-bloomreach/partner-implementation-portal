@@ -590,15 +590,7 @@ export async function updateBloomreachRegion(_token, implementationId, region) {
   return error ? fail(error) : { ok: true }
 }
 
-// ---- Auth (Supabase email magic link, PKCE flow) ----
-
-export async function requestMagicLink(email) {
-  const { error } = await supabase.auth.signInWithOtp({
-    email: email.trim().toLowerCase(),
-    options: { emailRedirectTo: window.location.origin + window.location.pathname },
-  })
-  return error ? fail(error) : { ok: true }
-}
+// ---- Auth (Supabase email + password, PKCE flow) ----
 
 export async function signInWithPassword(email, password) {
   const { error } = await supabase.auth.signInWithPassword({
