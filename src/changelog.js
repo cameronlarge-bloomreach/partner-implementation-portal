@@ -23,4 +23,25 @@ export const CHANGELOG = [
       'New "Generate BAU Handover" button on the Setup tab (next to the Closed status button).',
     ],
   },
+  {
+    version: '2026-09-29',
+    date: '29 September 2026',
+    items: [
+      'Portal moved to its new domain, partner-blimp.com (bloomreach-blimp.com never cleared its registrar review).',
+    ],
+  },
+  {
+    version: '2026-09-30',
+    date: '30 September 2026',
+    items: [
+      'Removed email sign-in links — sign in with email + password, or "Forgot password?" to set one.',
+    ],
+  },
+  {
+    version: '2026-10-01',
+    date: '1 October 2026',
+    items: [
+      'New admin "Permissions" page (Dashboard → Permissions) — see who has access to what, grant or revoke access to a partner, a single implementation, or admin/SDC, for anyone whether or not they\'ve signed up yet.',
+    ],
+  },
 ]
