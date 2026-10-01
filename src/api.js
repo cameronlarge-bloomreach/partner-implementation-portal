@@ -731,9 +731,56 @@ export async function deleteStepDefinition(step, implementationId) {
   return error ? fail(error) : { ok: true }
 }
 
+// ---- Permissions (admin-only management of who can see what) ----
+
+// Everything needed to render one row per known email: an account (profiles),
+// a direct implementation grant, a partner-wide grant, or an admin/SDC
+// role — a person can show up from any of these without the others (e.g. a
+// partner contact added via "Add implementation" before they've signed up).
+export async function getAllAccess() {
+  try {
+    const [profiles, access, admins, sdc, partnerGrants, impls] = await Promise.all([
+      supabase.from('profiles').select('id, email, created_at, declined').order('created_at', { ascending: false }),
+      supabase.from('access').select('email, implementation_id'),
+      supabase.from('admin_emails').select('email'),
+      supabase.from('sdc_emails').select('email'),
+      supabase.from('partner_access').select('email, partner_name'),
+      supabase.from('implementations').select('id, partner_name, client_name').order('partner_name'),
+    ])
+    const firstError = [profiles, access, admins, sdc, partnerGrants, impls].find(r => r.error)
+    if (firstError) throw firstError.error
+    return {
+      profiles: profiles.data,
+      access: access.data,
+      admins: (admins.data || []).map(a => a.email),
+      sdc: (sdc.data || []).map(a => a.email),
+      partnerGrants: partnerGrants.data,
+      implementations: impls.data,
+    }
+  } catch (e) { return fail(e) }
+}
+
+export async function removeAdminAccess(email) {
+  const { error } = await supabase.from('admin_emails').delete().eq('email', email.trim().toLowerCase())
+  return error ? fail(error) : { ok: true }
+}
+
+export async function removeSDCAccess(email) {
+  const { error } = await supabase.from('sdc_emails').delete().eq('email', email.trim().toLowerCase())
+  return error ? fail(error) : { ok: true }
+}
+
+export async function removePartnerAccess(email, partnerName) {
+  const { error } = await supabase.from('partner_access').delete()
+    .eq('email', email.trim().toLowerCase()).eq('partner_name', partnerName)
+  return error ? fail(error) : { ok: true }
+}
+
 // ---- Sign-up approval ----
 
 // target: { type: 'admin' } | { type: 'sdc' } | { type: 'partner', partnerName } | { type: 'implementation', id }
+// Also reused directly by the Permissions page to grant access to anyone,
+// signed up or not — the shape of "grant X to this email" is identical.
 export async function approveSignup(email, target) {
   const clean = email.trim().toLowerCase()
   if (target.type === 'admin') {

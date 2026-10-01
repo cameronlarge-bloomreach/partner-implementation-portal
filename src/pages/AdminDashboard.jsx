@@ -226,6 +226,15 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 Analytics
               </Link>
             )}
+            {isAdmin && (
+              <Link
+                to="/admin/permissions"
+                className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
+                style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
+              >
+                Permissions
+              </Link>
+            )}
             <button
               onClick={() => window.print()}
               className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
