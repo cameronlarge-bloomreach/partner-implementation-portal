@@ -768,6 +768,19 @@ export async function removePartnerAccess(email, partnerName) {
   return error ? fail(error) : { ok: true }
 }
 
+// Permanently deletes the Supabase auth account itself (not just their
+// access grants) — via a server-side Edge Function, since real account
+// deletion needs the service-role key, which the browser must never hold.
+// Cascades to their profile row; the function also cleans up any leftover
+// access/partner_access/admin_emails/sdc_emails rows for their email, since
+// those aren't foreign-keyed to the auth user. Irreversible.
+export async function deleteUserAccount(userId) {
+  const { data, error } = await supabase.functions.invoke('delete-user', { body: { userId } })
+  if (error) return fail(error)
+  if (data?.error) return { error: data.error }
+  return { ok: true }
+}
+
 // ---- Sign-up approval ----
 
 // target: { type: 'admin' } | { type: 'sdc' } | { type: 'partner', partnerName } | { type: 'implementation', id }

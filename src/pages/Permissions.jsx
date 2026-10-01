@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllAccess, approveSignup, removeAccess, removeAdminAccess, removeSDCAccess, removePartnerAccess } from '../api'
+import { getAllAccess, approveSignup, removeAccess, removeAdminAccess, removeSDCAccess, removePartnerAccess, deleteUserAccount } from '../api'
 import Navbar from '../components/Navbar'
 
 function Chip({ children, onRemove, removing }) {
@@ -82,9 +82,10 @@ function GrantSelect({ partners, implementations, onGrant, busy }) {
   )
 }
 
-function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke }) {
+function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke, onDelete }) {
   const [removing, setRemoving] = useState(null)
   const [granting, setGranting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState(null)
   const isSelf = row.email === selfEmail
   const hasAnyAccess = row.isAdmin || row.isSDC || row.partners.length > 0 || row.implementations.length > 0
@@ -104,6 +105,15 @@ function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke 
     const err = await onGrant(row.email, target)
     setGranting(false)
     return err
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Permanently delete ${row.email}'s account? This can't be undone — they'll lose their login and all access, and would need to sign up again from scratch.`)) return
+    if (!confirm(`Really sure? This deletes the account itself, not just their access.`)) return
+    setDeleting(true)
+    setError(null)
+    const err = await onDelete(row.userId)
+    if (err) { setError(err); setDeleting(false) }
   }
 
   return (
@@ -141,7 +151,19 @@ function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke 
         ))}
         {!hasAnyAccess && <span className="text-xs" style={{ color: 'var(--muted)' }}>No access granted</span>}
       </div>
-      <GrantSelect partners={partners} implementations={implementations} onGrant={grant} busy={granting} />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <GrantSelect partners={partners} implementations={implementations} onGrant={grant} busy={granting} />
+        {row.hasAccount && !isSelf && (
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="disabled:opacity-50 text-xs font-medium hover:underline"
+            style={{ color: 'var(--rust)' }}
+          >
+            {deleting ? 'Deleting…' : 'Delete account'}
+          </button>
+        )}
+      </div>
       {error && <p className="text-xs mt-1.5" style={{ color: 'var(--rust)' }}>{error}</p>}
     </div>
   )
@@ -212,6 +234,7 @@ export default function Permissions({ userInfo, onLogout }) {
   const rows = useMemo(() => {
     if (!data) return []
     const implMap = Object.fromEntries(data.implementations.map(i => [i.id, i]))
+    const profileByEmail = Object.fromEntries(data.profiles.map(p => [p.email, p]))
     const emails = new Set([
       ...data.profiles.map(p => p.email),
       ...data.access.map(a => a.email),
@@ -221,7 +244,8 @@ export default function Permissions({ userInfo, onLogout }) {
     ])
     return Array.from(emails).sort().map(email => ({
       email,
-      hasAccount: data.profiles.some(p => p.email === email),
+      hasAccount: !!profileByEmail[email],
+      userId: profileByEmail[email]?.id || null,
       isAdmin: data.admins.includes(email),
       isSDC: data.sdc.includes(email),
       partners: data.partnerGrants.filter(g => g.email === email).map(g => g.partner_name),
@@ -243,6 +267,13 @@ export default function Permissions({ userInfo, onLogout }) {
       : kind === 'sdc' ? await removeSDCAccess(email)
       : kind === 'partner' ? await removePartnerAccess(email, extra)
       : await removeAccess(null, extra, email)
+    if (res.error) return res.error
+    load()
+    return null
+  }
+
+  async function handleDelete(userId) {
+    const res = await deleteUserAccount(userId)
     if (res.error) return res.error
     load()
     return null
@@ -299,6 +330,7 @@ export default function Permissions({ userInfo, onLogout }) {
                       selfEmail={selfEmail}
                       onGrant={handleGrant}
                       onRevoke={handleRevoke}
+                      onDelete={handleDelete}
                     />
                   ))
                 )}
