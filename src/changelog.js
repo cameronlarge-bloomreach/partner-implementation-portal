@@ -5,6 +5,13 @@
 // from git history.
 export const CHANGELOG = [
   {
+    version: '2026-10-01b',
+    date: '1 October 2026',
+    items: [
+      'Removed the "Setup" tab on implementation pages — partner access management moved to the admin Permissions page, and everything else (Slack, Key Dates, Scope of Work, Progress Steps, Implementation Actions) now lives in the Internal tab alongside the rest of the internal-only info.',
+    ],
+  },
+  {
     version: '2026-09-22',
     date: '22 September 2026',
     items: [

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   getImplementation, updateDates, updateTouchPoint,
-  addAccess, removeAccess, updateImplementationStatus,
+  updateImplementationStatus,
   deleteImplementation, updateSlackChannel, triggerBauHandover,
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, updatePSM,
@@ -295,9 +295,6 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [raisingTicketStep, setRaisingTicketStep] = useState(null)
   const [raisedTickets, setRaisedTickets] = useState({})
 
-  const [newAccessEmail, setNewAccessEmail] = useState('')
-  const [addingAccess, setAddingAccess] = useState(false)
-
   const [slackChannelId, setSlackChannelId] = useState('')
   const [savingSlack, setSavingSlack] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
@@ -378,26 +375,6 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       setImpl(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [key]: status } }))
     } catch { /* silent */ }
     setSavingStep(null)
-  }
-
-  async function handleAddAccess(e) {
-    e.preventDefault()
-    const newEmail = newAccessEmail.trim().toLowerCase()
-    if (!newEmail || (impl.accessEmails || []).includes(newEmail)) return
-    setAddingAccess(true)
-    try {
-      await addAccess(credential, id, newEmail)
-      patchImpl({ accessEmails: [...(impl.accessEmails || []), newEmail] })
-      setNewAccessEmail('')
-    } catch { /* silent */ }
-    setAddingAccess(false)
-  }
-
-  async function handleRemoveAccess(emailToRemove) {
-    try {
-      await removeAccess(credential, id, emailToRemove)
-      patchImpl({ accessEmails: (impl.accessEmails || []).filter(e => e !== emailToRemove) })
-    } catch { /* silent */ }
   }
 
   async function handleSetStatus(newStatus) {
@@ -603,7 +580,6 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
-    { key: 'setup', label: 'Setup' },
     ...(canViewAll ? [{ key: 'internal', label: 'Internal' }] : []),
   ]
 
@@ -860,33 +836,14 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           </div>
         )}
 
-        {/* Setup */}
-        {activeTab === 'setup' && (
-          <div className="flex flex-col gap-5">
-            <Card>
-              <SectionTitle>Partner Access</SectionTitle>
-              <div className="flex flex-wrap gap-1.5 mb-3.5">
-                {(impl.accessEmails || []).length === 0 ? (
-                  <span className="text-sm" style={{ color: 'var(--muted)' }}>No partner access granted yet.</span>
-                ) : impl.accessEmails.map(email => (
-                  <span key={email} className="inline-flex items-center gap-1.5 text-xs font-medium pl-3 pr-2 py-1.5 rounded-full" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
-                    {email}
-                    {isAdmin && <button onClick={() => handleRemoveAccess(email)} className="leading-none" style={{ color: 'var(--muted)' }}>×</button>}
-                  </span>
-                ))}
-              </div>
-              {!isSDC && (
-                <form onSubmit={handleAddAccess} className="flex gap-2 max-w-sm">
-                  <input type="email" required value={newAccessEmail} onChange={e => setNewAccessEmail(e.target.value)}
-                    placeholder="partner@company.com" className="flex-1 rounded-lg px-3 py-1.5 text-sm focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                  <button type="submit" disabled={addingAccess} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
-                    {addingAccess ? 'Adding…' : isAdmin ? 'Grant access' : 'Invite'}
-                  </button>
-                </form>
-              )}
-            </Card>
-
-            {canViewAll && (
+        {/* Internal — admin and SDC only, hidden from partners */}
+        {activeTab === 'internal' && canViewAll && (
+          <div>
+            <div className="flex items-center gap-2 mb-3.5">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--muted)' }} />
+              <span className="text-xs" style={{ color: 'var(--muted)' }}>Bloomreach-internal — hidden from the partner</span>
+            </div>
+            <div className="flex flex-col gap-5">
               <Card>
                 <div className="flex items-center justify-between mb-3.5">
                   <SectionTitle>Slack Notifications</SectionTitle>
@@ -903,9 +860,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   </button>
                 </form>
               </Card>
-            )}
 
-            {canViewAll && (
               <Card>
                 <div className="flex items-center justify-between mb-3.5">
                   <SectionTitle>Key Dates</SectionTitle>
@@ -927,9 +882,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   </button>
                 </form>
               </Card>
-            )}
 
-            {canViewAll && (
               <Card>
                 <SectionTitle>Scope of Work</SectionTitle>
                 <p className="text-xs -mt-2.5 mb-3" style={{ color: 'var(--muted)' }}>The partner's SOW and any related documents. Visible to the partner on their Overview tab.</p>
@@ -944,9 +897,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                 )}
                 {extractError && <p className="text-xs mt-2" style={{ color: 'var(--rust)' }}>{extractError}</p>}
               </Card>
-            )}
 
-            {canViewAll && (
               <Card>
                 <div className="flex items-center justify-between">
                   <div>
@@ -967,51 +918,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   </div>
                 )}
               </Card>
-            )}
 
-            {isAdmin && (
-              <Card>
-                <div className="flex items-center justify-between mb-2.5">
-                  <SectionTitle>Implementation Actions</SectionTitle>
-                  {savingStatus && <span className="text-xs -mt-3.5" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                </div>
-                <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Status</p>
-                <div className="flex gap-2 mb-4 flex-wrap items-center">
-                  {Object.values(IMPLEMENTATION_STATUSES).map(meta => {
-                    const active = (impl.status || 'active') === meta.key
-                    return (
-                      <button key={meta.key} disabled={savingStatus} onClick={() => handleSetStatus(meta.key)}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                        style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
-                        {meta.label}
-                      </button>
-                    )
-                  })}
-                  <button onClick={handleTriggerBauHandover} disabled={savingBau}
-                    className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-70"
-                    style={bauJustTriggered
-                      ? { background: 'var(--moss-bg)', color: 'var(--moss)', border: '1px solid var(--moss)' }
-                      : { background: '#fff', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>
-                    {savingBau ? 'Generating…' : bauJustTriggered ? 'Generated ✓' : 'Generate BAU Handover'}
-                  </button>
-                </div>
-                <button onClick={handleDelete} disabled={deleting}
-                  className="text-xs font-medium px-3.5 py-1.5 rounded-lg hover:bg-[var(--rust-bg)] disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--rust)', color: 'var(--rust)' }}>
-                  {deleting ? 'Deleting…' : 'Delete'}
-                </button>
-              </Card>
-            )}
-          </div>
-        )}
-
-        {/* Internal — admin and SDC only, hidden from partners */}
-        {activeTab === 'internal' && canViewAll && (
-          <div>
-            <div className="flex items-center gap-2 mb-3.5">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--muted)' }} />
-              <span className="text-xs" style={{ color: 'var(--muted)' }}>Bloomreach-internal — hidden from the partner</span>
-            </div>
-            <div className="flex flex-col gap-5">
               <Card>
                 <div className="flex items-center justify-between mb-2.5">
                   <SectionTitle>Partner Services Manager</SectionTitle>
@@ -1226,6 +1133,39 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   </div>
                 )}
               </Card>
+
+              {isAdmin && (
+                <Card>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <SectionTitle>Implementation Actions</SectionTitle>
+                    {savingStatus && <span className="text-xs -mt-3.5" style={{ color: 'var(--muted)' }}>Saving…</span>}
+                  </div>
+                  <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Status</p>
+                  <div className="flex gap-2 mb-4 flex-wrap items-center">
+                    {Object.values(IMPLEMENTATION_STATUSES).map(meta => {
+                      const active = (impl.status || 'active') === meta.key
+                      return (
+                        <button key={meta.key} disabled={savingStatus} onClick={() => handleSetStatus(meta.key)}
+                          className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                          style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
+                          {meta.label}
+                        </button>
+                      )
+                    })}
+                    <button onClick={handleTriggerBauHandover} disabled={savingBau}
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-70"
+                      style={bauJustTriggered
+                        ? { background: 'var(--moss-bg)', color: 'var(--moss)', border: '1px solid var(--moss)' }
+                        : { background: '#fff', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>
+                      {savingBau ? 'Generating…' : bauJustTriggered ? 'Generated ✓' : 'Generate BAU Handover'}
+                    </button>
+                  </div>
+                  <button onClick={handleDelete} disabled={deleting}
+                    className="text-xs font-medium px-3.5 py-1.5 rounded-lg hover:bg-[var(--rust-bg)] disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--rust)', color: 'var(--rust)' }}>
+                    {deleting ? 'Deleting…' : 'Delete'}
+                  </button>
+                </Card>
+              )}
             </div>
           </div>
         )}
