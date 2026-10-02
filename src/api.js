@@ -99,6 +99,20 @@ function shapeMetrics(rows) {
   return out
 }
 
+// Consultant hours synced from Workfront: Implementation-Activation
+// Services (hours the partner/client bought) and Activation Support
+// (Bloomreach PSM time). Null when that task hasn't synced.
+function shapeWorkfrontHours(rows) {
+  const out = { activationServices: null, activationSupport: null, syncedAt: null }
+  for (const r of rows || []) {
+    const shaped = { planned: r.planned_hours == null ? null : Number(r.planned_hours), actual: r.actual_hours == null ? null : Number(r.actual_hours) }
+    if (r.task_kind === 'activation_services') out.activationServices = shaped
+    if (r.task_kind === 'activation_support') out.activationSupport = shaped
+    if (!out.syncedAt || r.synced_at > out.syncedAt) out.syncedAt = r.synced_at
+  }
+  return out
+}
+
 function shapeDoc(d) {
   return {
     id: d.id,
@@ -115,7 +129,7 @@ function shapeDoc(d) {
 // as admin (view parity — every implementation, every tab), but is never
 // treated as edit-capable here; the frontend gates SDC's write access down
 // to QA workbooks only, and RLS enforces the same boundary server-side.
-function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails, noteRows, scenarioRows, scopeRows, docRows, metricRows) {
+function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails, noteRows, scenarioRows, scopeRows, docRows, metricRows, hoursRows) {
   const { touchPoints, qaSteps } = splitTouchPoints(tpRows)
   const canViewInternal = isAdmin || isSDC
   const resp = {
@@ -123,6 +137,8 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails,
     partner_name: impl.partner_name,
     client_name: impl.client_name,
     status: impl.status || 'active',
+    workfrontHours: shapeWorkfrontHours(hoursRows),
+    workfrontProjectId: canViewInternal ? (impl.workfront_project_id || '') : undefined,
     bauHandoverStatus: canViewInternal ? (impl.bau_handover_status || 'N') : undefined,
     isAdmin,
     isSDC,
@@ -192,7 +208,7 @@ export async function getImplementation(_token, implementationId) {
   try {
     const [isAdmin, isSDC] = await Promise.all([callerIsAdmin(), callerIsSDC()])
     const canViewInternal = isAdmin || isSDC
-    const [impl, tps, raid, scope, docs, access, notes, scenarios, metrics] = await Promise.all([
+    const [impl, tps, raid, scope, docs, access, notes, scenarios, metrics, hours] = await Promise.all([
       supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
       supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
       supabase.from('raid_items').select('*').eq('implementation_id', implementationId).order('created_at'),
@@ -208,8 +224,9 @@ export async function getImplementation(_token, implementationId) {
       canViewInternal
         ? supabase.from('usage_metrics').select('*').eq('implementation_id', implementationId)
         : Promise.resolve({ data: [] }),
+      supabase.from('workfront_hours').select('*').eq('implementation_id', implementationId),
     ])
-    const firstError = [impl, tps, raid, scope, docs, access, notes, scenarios].find(r => r.error)
+    const firstError = [impl, tps, raid, scope, docs, access, notes, scenarios, hours].find(r => r.error)
     if (firstError) throw firstError.error
     if (!impl.data) return { error: 'not_found' }
     const partnerGrants = await supabase.from('partner_access')
@@ -220,7 +237,7 @@ export async function getImplementation(_token, implementationId) {
     ]
     return buildImplResponse(
       impl.data, tps.data, raid.data, isAdmin, isSDC,
-      emails, notes.data, scenarios.data, scope.data, docs.data, metrics.data,
+      emails, notes.data, scenarios.data, scope.data, docs.data, metrics.data, hours.data,
     )
   } catch (e) { return fail(e) }
 }
@@ -228,7 +245,7 @@ export async function getImplementation(_token, implementationId) {
 export async function getAllImplementations() {
   try {
     const [isAdmin, isSDC] = await Promise.all([callerIsAdmin(), callerIsSDC()])
-    const [impls, tps, raid, scope, docs, access, notes, scenarios, metrics, partnerGrants] = await Promise.all([
+    const [impls, tps, raid, scope, docs, access, notes, scenarios, metrics, partnerGrants, hours] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
       supabase.from('raid_items').select('*').order('created_at'),
@@ -239,8 +256,9 @@ export async function getAllImplementations() {
       supabase.from('scenario_sync').select('*').order('name'),
       supabase.from('usage_metrics').select('*'),
       supabase.from('partner_access').select('email, partner_name'),
+      supabase.from('workfront_hours').select('*'),
     ])
-    const firstError = [impls, tps, raid, scope, docs, access, notes, scenarios].find(r => r.error)
+    const firstError = [impls, tps, raid, scope, docs, access, notes, scenarios, hours].find(r => r.error)
     if (firstError) throw firstError.error
     const grantsByPartner = {}
     for (const g of partnerGrants.data || []) {
@@ -259,13 +277,14 @@ export async function getAllImplementations() {
     const noteMap = byImpl(notes.data)
     const scenarioMap = byImpl(scenarios.data)
     const metricMap = byImpl(metrics.data)
+    const hoursMap = byImpl(hours.data)
     return impls.data.map(impl => buildImplResponse(
       impl, tpMap[impl.id] || [], raidMap[impl.id] || [], isAdmin, isSDC,
       [
         ...(accessMap[impl.id] || []).map(a => a.email),
         ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
       ],
-      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [], docMap[impl.id] || [], metricMap[impl.id] || [],
+      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [], docMap[impl.id] || [], metricMap[impl.id] || [], hoursMap[impl.id] || [],
     ))
   } catch (e) { return fail(e) }
 }
@@ -487,6 +506,14 @@ export async function triggerBauHandover(_token, implementationId) {
   if (resetErr) return fail(resetErr)
   const { error } = await supabase.from('implementations')
     .update({ bau_handover_status: 'Y' }).eq('id', implementationId)
+  return error ? fail(error) : { ok: true }
+}
+
+// Which Workfront project holds this client's two hours tasks. The daily
+// sync only refreshes implementations that have one set.
+export async function updateWorkfrontProject(_token, implementationId, projectId) {
+  const { error } = await supabase.from('implementations')
+    .update({ workfront_project_id: (projectId || '').trim() }).eq('id', implementationId)
   return error ? fail(error) : { ok: true }
 }
 

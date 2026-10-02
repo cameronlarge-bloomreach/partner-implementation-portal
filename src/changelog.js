@@ -5,6 +5,14 @@
 // from git history.
 export const CHANGELOG = [
   {
+    version: '2026-10-02',
+    date: '2 October 2026',
+    items: [
+      'New "Consultant Hours" card on each implementation (Overview) — Implementation-Activation Services hours used vs purchased, and Activation Support (PSM) hours used vs planned, synced daily from Workfront.',
+      'Link an implementation to its Workfront project from the Internal tab (Workfront Project) — 19 are linked already; the rest need their project ID pasting in.',
+    ],
+  },
+  {
     version: '2026-10-01b',
     date: '1 October 2026',
     items: [

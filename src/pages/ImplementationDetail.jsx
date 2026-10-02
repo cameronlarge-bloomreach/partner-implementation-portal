@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   getImplementation, updateDates, updateTouchPoint,
-  updateImplementationStatus,
+  updateImplementationStatus, updateWorkfrontProject,
   deleteImplementation, updateSlackChannel, triggerBauHandover,
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, updatePSM,
@@ -234,6 +234,46 @@ function AllowanceRow({ meter, data, onSave, editable = true }) {
   )
 }
 
+function fmtHours(n) {
+  return Number(n).toLocaleString('en-GB', { maximumFractionDigits: 2 })
+}
+
+// One consultant-hours line: used of planned, remaining, and a bar that
+// turns rust once the hours are over-used.
+function HoursRow({ label, hint, hours }) {
+  const planned = hours?.planned ?? null
+  const actual = hours?.actual ?? null
+  if (!hours || actual === null) {
+    return (
+      <div>
+        <p className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{label}</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>Not tracked in Workfront yet</p>
+      </div>
+    )
+  }
+  const pct = planned ? Math.round((actual / planned) * 100) : null
+  const over = planned !== null && planned > 0 && actual > planned
+  const remaining = planned === null ? null : planned - actual
+  const color = over ? 'var(--rust)' : pct !== null && pct >= 85 ? '#c99a00' : 'var(--moss)'
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 mb-1.5">
+        <span className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{label}</span>
+        <span className="font-mono text-[12px]" style={{ color }}>
+          {fmtHours(actual)}{planned !== null ? ` / ${fmtHours(planned)}` : ''} hrs{pct !== null ? ` · ${pct}%` : ''}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--hairline)' }}>
+        <div className="h-full rounded-full" style={{ width: `${pct === null ? 0 : Math.min(pct, 100)}%`, background: color }} />
+      </div>
+      <p className="text-[11.5px] mt-1.5" style={{ color: over ? 'var(--rust)' : 'var(--muted)' }}>
+        {remaining === null ? hint : over ? `${fmtHours(-remaining)} hrs over` : `${fmtHours(remaining)} hrs remaining`}
+        {remaining !== null && !over ? ` · ${hint}` : ''}
+      </p>
+    </div>
+  )
+}
+
 export default function ImplementationDetail({ credential, userInfo, onLogout }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -297,6 +337,9 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
   const [slackChannelId, setSlackChannelId] = useState('')
   const [savingSlack, setSavingSlack] = useState(false)
+  const [workfrontProjectId, setWorkfrontProjectId] = useState('')
+  const [savingWorkfront, setSavingWorkfront] = useState(false)
+  const [workfrontSaved, setWorkfrontSaved] = useState(false)
   const [slackSaved, setSlackSaved] = useState(false)
 
   const [savingStatus, setSavingStatus] = useState(false)
@@ -337,6 +380,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
         DATE_FIELDS.forEach(f => { d[f.key] = data[f.key] || '' })
         setDates(d)
         setSlackChannelId(data.slackChannelId || '')
+        setWorkfrontProjectId(data.workfrontProjectId || '')
         setRaidItems(data.raid || [])
         setDocuments(data.documents || [])
         setActiveTab('overview')
@@ -375,6 +419,18 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       setImpl(prev => ({ ...prev, qaSteps: { ...prev.qaSteps, [key]: status } }))
     } catch { /* silent */ }
     setSavingStep(null)
+  }
+
+  async function handleSaveWorkfrontProject(e) {
+    e.preventDefault()
+    setSavingWorkfront(true)
+    try {
+      await updateWorkfrontProject(credential, id, workfrontProjectId)
+      patchImpl({ workfrontProjectId: workfrontProjectId.trim() })
+      setWorkfrontSaved(true)
+      setTimeout(() => setWorkfrontSaved(false), 2000)
+    } catch { /* silent */ }
+    setSavingWorkfront(false)
   }
 
   async function handleSetStatus(newStatus) {
@@ -678,6 +734,17 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               </div>
             </Card>
 
+            <Card className="lg:col-span-2">
+              <SectionTitle>Consultant Hours</SectionTitle>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <HoursRow label="Implementation-Activation Services" hint="partner consultant hours purchased" hours={impl.workfrontHours?.activationServices} />
+                <HoursRow label="Activation Support" hint="Bloomreach PSM time" hours={impl.workfrontHours?.activationSupport} />
+              </div>
+              {impl.workfrontHours?.syncedAt && (
+                <p className="text-[11px] mt-3.5" style={{ color: 'var(--muted)' }}>From Workfront · synced {formatDateTime(impl.workfrontHours.syncedAt)}</p>
+              )}
+            </Card>
+
             <Card>
               <SectionTitle pill={
                 <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full text-black" style={{ background: 'var(--gold)' }}>{tpPct}%</span>
@@ -857,6 +924,23 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                     className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
                   <button type="submit" disabled={savingSlack || !isAdmin} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
                     {savingSlack ? 'Saving…' : 'Save'}
+                  </button>
+                </form>
+              </Card>
+
+              <Card>
+                <div className="flex items-center justify-between mb-3.5">
+                  <SectionTitle>Workfront Project</SectionTitle>
+                  {workfrontSaved && <span className="text-xs font-medium -mt-3.5" style={{ color: 'var(--moss)' }}>Saved!</span>}
+                </div>
+                <p className="text-xs mb-3 -mt-2.5" style={{ color: 'var(--muted)' }}>
+                  The Workfront project holding this client's "Implementation-Activation Services" and "Activation Support" tasks. The hours sync only updates implementations with an ID here — paste it from the project's Workfront URL.
+                </p>
+                <form onSubmit={handleSaveWorkfrontProject} className="flex gap-2 max-w-md">
+                  <input type="text" value={workfrontProjectId} onChange={e => setWorkfrontProjectId(e.target.value)} placeholder="69fcaaa90009d30d1888d504fda0032c" disabled={!isAdmin}
+                    className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
+                  <button type="submit" disabled={savingWorkfront || !isAdmin} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
+                    {savingWorkfront ? 'Saving…' : 'Save'}
                   </button>
                 </form>
               </Card>
