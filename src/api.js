@@ -101,13 +101,15 @@ function shapeMetrics(rows) {
 
 // Consultant hours synced from Workfront: Implementation-Activation
 // Services (hours the partner/client bought) and Activation Support
-// (Bloomreach PSM time). Null when that task hasn't synced.
+// (Bloomreach PSM time), plus optional Additional Consulting hours (only on
+// projects that have that task). Null when that task hasn't synced.
 function shapeWorkfrontHours(rows) {
-  const out = { activationServices: null, activationSupport: null, syncedAt: null }
+  const out = { activationServices: null, activationSupport: null, consultingServices: null, syncedAt: null }
   for (const r of rows || []) {
     const shaped = { planned: r.planned_hours == null ? null : Number(r.planned_hours), actual: r.actual_hours == null ? null : Number(r.actual_hours) }
     if (r.task_kind === 'activation_services') out.activationServices = shaped
     if (r.task_kind === 'activation_support') out.activationSupport = shaped
+    if (r.task_kind === 'consulting_services') out.consultingServices = shaped
     if (!out.syncedAt || r.synced_at > out.syncedAt) out.syncedAt = r.synced_at
   }
   return out

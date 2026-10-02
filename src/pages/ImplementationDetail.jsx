@@ -739,6 +739,9 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <HoursRow label="Implementation-Activation Services" hint="partner consultant hours purchased" hours={impl.workfrontHours?.activationServices} />
                 <HoursRow label="Activation Support" hint="Bloomreach PSM time" hours={impl.workfrontHours?.activationSupport} />
+                {impl.workfrontHours?.consultingServices && (
+                  <HoursRow label="Additional Consulting" hint="consultancy hours on top of activation services" hours={impl.workfrontHours.consultingServices} />
+                )}
               </div>
               {impl.workfrontHours?.syncedAt && (
                 <p className="text-[11px] mt-3.5" style={{ color: 'var(--muted)' }}>From Workfront · synced {formatDateTime(impl.workfrontHours.syncedAt)}</p>

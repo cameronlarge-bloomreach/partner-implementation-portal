@@ -9,6 +9,7 @@ export const CHANGELOG = [
     date: '2 October 2026',
     items: [
       'New "Consultant Hours" card on each implementation (Overview) — Implementation-Activation Services hours used vs purchased, and Activation Support (PSM) hours used vs planned, synced daily from Workfront.',
+      'Projects with extra consultancy hours (the "Consulting-Engagement Consulting Services One Time" task in Workfront) now also show an Additional Consulting line on the card.',
       'Link an implementation to its Workfront project from the Internal tab (Workfront Project) — 19 are linked already; the rest need their project ID pasting in.',
     ],
   },
