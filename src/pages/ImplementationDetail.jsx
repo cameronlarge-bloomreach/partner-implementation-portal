@@ -620,7 +620,10 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   // ever write QA workbook entries — every other edit control below stays
   // gated to isAdmin specifically, while visibility gates use canViewAll.
   const isSDC = !!impl.isSDC
-  const canViewAll = isAdmin || isSDC
+  // Viewer: same visibility as SDC but read-only everywhere (no QA workbook
+  // edits, no RAID edits, no tickets) and no documents / scope of work.
+  const isViewer = !!impl.isViewer
+  const canViewAll = isAdmin || isSDC || isViewer
   const tp = impl.touchPoints || {}
   const qa = impl.qaSteps || {}
   const tpRequired = tpList.filter(x => (tp[x.key] || 'not_started') !== 'not_required')
@@ -641,7 +644,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
-      <Navbar userInfo={userInfo} onLogout={onLogout} title={isAdmin ? 'Admin — Partner Portal' : isSDC ? 'SDC — Partner Portal' : 'Partner Portal'} />
+      <Navbar userInfo={userInfo} onLogout={onLogout} title={isAdmin ? 'Admin — Partner Portal' : isSDC ? 'SDC — Partner Portal' : isViewer ? 'Viewer — Partner Portal' : 'Partner Portal'} />
 
       <div className="max-w-[1120px] mx-auto px-7 py-7">
         {backHref && <Link to={backHref} className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>{backLabel}</Link>}
@@ -699,7 +702,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
         {/* Overview */}
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <Card>
+            {!isViewer && (<Card>
               <SectionTitle>Partner Access</SectionTitle>
               <div className="flex flex-wrap gap-1.5">
                 {(impl.accessEmails || []).length === 0 ? (
@@ -710,11 +713,11 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   </span>
                 ))}
               </div>
-            </Card>
+            </Card>)}
 
             <Card>
-              <SectionTitle>Scope of Work</SectionTitle>
-              <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={false} onChange={() => {}} />
+              {!isViewer && <SectionTitle>Scope of Work</SectionTitle>}
+              {!isViewer && <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={false} onChange={() => {}} />}
               {canViewAll && (
                 <p className="text-xs mt-2.5" style={{ color: 'var(--muted)' }}>
                   Slack channel: <span className="font-mono">{impl.slackChannelId || 'Not set'}</span>
@@ -763,7 +766,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                       </div>
                       <div className="flex items-center gap-1.5">
                         {savingStep === item.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                        <StatusSelect value={status} onChange={v => handleTPChange(item.key, v)} disabled={savingStep === item.key || isSDC} />
+                        <StatusSelect value={status} onChange={v => handleTPChange(item.key, v)} disabled={savingStep === item.key || isSDC || isViewer} />
                       </div>
                     </div>
                   )
@@ -795,7 +798,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                           )}
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                          {canViewAll && QA_WORKBOOKS[step.key] && (
+                          {canViewAll && QA_WORKBOOKS[step.key] && (isViewer ? !!raisedTickets[step.key] : true) && (
                             raisedTickets[step.key] ? (
                               <a href={raisedTickets[step.key].url} target="_blank" rel="noopener noreferrer"
                                 className="text-xs font-medium" style={{ color: 'var(--moss)' }}>
@@ -808,7 +811,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                             )
                           )}
                           {savingStep === step.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                          <StatusSelect value={status} onChange={v => handleQAChange(step.key, v)} disabled={savingStep === step.key || isSDC} />
+                          <StatusSelect value={status} onChange={v => handleQAChange(step.key, v)} disabled={savingStep === step.key || isSDC || isViewer} />
                         </div>
                       </div>
                     </div>
@@ -818,11 +821,11 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
             </Card>
 
             <Card className="lg:col-span-2">
-              <SectionTitle pill={
+              <SectionTitle pill={isViewer ? undefined :
                 <button onClick={() => setShowAddRaid(v => !v)} className="text-xs font-semibold px-3.5 py-1.5 rounded-[9px] text-black" style={{ background: 'var(--gold)' }}>+ Add</button>
               }>RAID Log — {raidItems.length} item{raidItems.length !== 1 ? 's' : ''}{openRaid > 0 ? `, ${openRaid} open` : ''}</SectionTitle>
 
-              {showAddRaid && (
+              {showAddRaid && !isViewer && (
                 <form onSubmit={handleAddRaid} className="mb-4 p-3 rounded-xl space-y-2.5 text-sm" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
                   <div className="grid grid-cols-2 gap-2">
                     <select value={newRaid.type} onChange={e => setNewRaid(r => ({ ...r, type: e.target.value }))}
@@ -885,11 +888,11 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                               <span className="text-[11px] font-semibold px-2 py-0.5 rounded" style={RAID_TYPE_STYLE[item.type] || {}}>{item.type}</span>
                               <span className="text-[11px] font-semibold px-2 py-0.5 rounded" style={RAID_STATUS_STYLE[item.status] || {}}>{item.status}</span>
                             </div>
-                            <div className="flex gap-2 flex-shrink-0">
+                            {!isViewer && <div className="flex gap-2 flex-shrink-0">
                               <button onClick={() => { setEditingRaid(item.id); setEditRaidData({ type: item.type, title: item.title, description: item.description, status: item.status, owner: item.owner }) }}
                                 className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>Edit</button>
                               <button onClick={() => handleDeleteRaid(item.id)} className="text-xs" style={{ color: 'var(--rust)' }}>Delete</button>
-                            </div>
+                            </div>}
                           </div>
                           <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{item.title}</p>
                           {item.description && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>{item.description}</p>}
@@ -970,7 +973,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                 </form>
               </Card>
 
-              <Card>
+              {!isViewer && <Card>
                 <SectionTitle>Scope of Work</SectionTitle>
                 <p className="text-xs -mt-2.5 mb-3" style={{ color: 'var(--muted)' }}>The partner's SOW and any related documents. Visible to the partner on their Overview tab.</p>
                 <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} onExtractUsage={isAdmin ? handleExtractUsage : undefined} />
@@ -983,7 +986,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                   </div>
                 )}
                 {extractError && <p className="text-xs mt-2" style={{ color: 'var(--rust)' }}>{extractError}</p>}
-              </Card>
+              </Card>}
 
               <Card>
                 <div className="flex items-center justify-between">
@@ -1264,6 +1267,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
           implementationId={id}
           stepKey={openWorkbookStep}
           isAdmin={isAdmin || isSDC}
+          readOnly={isViewer}
           clientName={impl.client_name}
           partnerName={impl.partner_name}
           onClose={closeWorkbook}

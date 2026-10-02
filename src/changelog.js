@@ -60,4 +60,11 @@ export const CHANGELOG = [
       'New admin "Permissions" page (Dashboard → Permissions) — see who has access to what, grant or revoke access to a partner, a single implementation, or admin/SDC, for anyone whether or not they\'ve signed up yet.',
     ],
   },
+  {
+    version: '2026-10-02',
+    date: '2 October 2026',
+    items: [
+      'New "Viewer" permission (Permissions page → Make Viewer): sees every implementation, progress, RAID, usage and meeting notes, but can\'t edit anything and never sees documents or scope of work.',
+    ],
+  },
 ]

@@ -197,7 +197,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
       <div className="no-print">
-        <Navbar userInfo={userInfo} onLogout={onLogout} title="Admin — Partner Portal" />
+        <Navbar userInfo={userInfo} onLogout={onLogout} title={userInfo?.isViewer && !userInfo?.isAdmin && !userInfo?.isSDC ? 'Viewer — Partner Portal' : 'Admin — Partner Portal'} />
       </div>
 
       <div className="max-w-7xl mx-auto px-7 py-7">
@@ -586,6 +586,8 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
       ? { type: 'admin' }
       : choice === 'sdc'
       ? { type: 'sdc' }
+      : choice === 'viewer'
+      ? { type: 'viewer' }
       : choice.startsWith('partner:')
       ? { type: 'partner', partnerName: choice.slice(8) }
       : { type: 'implementation', id: choice.slice(5) }
@@ -622,6 +624,7 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
         <optgroup label="Bloomreach">
           <option value="admin">Make admin — full access to everything</option>
           <option value="sdc">Make SDC — sees everything, can only edit QA docs</option>
+          <option value="viewer">Make Viewer — sees most things, can't edit, no documents</option>
         </optgroup>
       </select>
       <button

@@ -49,7 +49,9 @@ function GuidanceList({ lines }) {
   )
 }
 
-export default function QAWorkbookModal({ credential, implementationId, stepKey, isAdmin, clientName, partnerName, onClose }) {
+// readOnly: nothing is editable by anyone (used for the Viewer role) — every
+// edit helper below becomes a no-op and the partner-side fields are disabled.
+export default function QAWorkbookModal({ credential, implementationId, stepKey, isAdmin, readOnly = false, clientName, partnerName, onClose }) {
   const workbook = QA_WORKBOOKS[stepKey]
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
@@ -140,11 +142,13 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   }
 
   function patch(fields) {
+    if (readOnly) return
     dirtyRef.current = true
     setData(d => ({ ...d, ...fields }))
     setEditGen(g => g + 1)
   }
   function patchCheck(key, fields) {
+    if (readOnly) return
     dirtyRef.current = true
     setData(d => ({ ...d, checks: { ...d.checks, [key]: { ...d.checks[key], ...fields } } }))
     setEditGen(g => g + 1)
@@ -321,7 +325,7 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
                   {data.partnerResponse || 'No response from the partner yet.'}
                 </p>
               ) : (
-                <textarea rows={4} value={data.partnerResponse} onChange={e => patch({ partnerResponse: e.target.value })}
+                <textarea rows={4} disabled={readOnly} value={data.partnerResponse} onChange={e => patch({ partnerResponse: e.target.value })}
                   placeholder="Response, questions, and confirmation of the changes made."
                   className="w-full text-[13px] rounded-lg px-3 py-2 resize-none focus:outline-none" style={{ border: '1px solid var(--hairline)', background: '#fcfcfc' }} />
               )}
@@ -336,7 +340,7 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: 'var(--muted)' }}>Partner sign-off</span>
-                <input type="text" disabled={isAdmin} value={data.signoff?.partner || ''} placeholder="Name & date"
+                <input type="text" disabled={isAdmin || readOnly} value={data.signoff?.partner || ''} placeholder="Name & date"
                   onChange={e => patch({ signoff: { ...data.signoff, partner: e.target.value } })}
                   className="text-[13px] rounded px-1 py-1 disabled:opacity-70 focus:outline-none" style={{ borderBottom: '1px solid var(--hairline)' }} />
               </label>

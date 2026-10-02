@@ -131,9 +131,11 @@ function shapeDoc(d) {
 // as admin (view parity — every implementation, every tab), but is never
 // treated as edit-capable here; the frontend gates SDC's write access down
 // to QA workbooks only, and RLS enforces the same boundary server-side.
-function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails, noteRows, scenarioRows, scopeRows, docRows, metricRows, hoursRows) {
+function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, isViewer, accessEmails, noteRows, scenarioRows, scopeRows, docRows, metricRows, hoursRows) {
   const { touchPoints, qaSteps } = splitTouchPoints(tpRows)
-  const canViewInternal = isAdmin || isSDC
+  // isViewer: sees the same internal fields as admin/SDC but can write nothing,
+  // and never sees documents / scope of work / who has access. RLS enforces it too.
+  const canViewInternal = isAdmin || isSDC || isViewer
   const resp = {
     id: impl.id,
     partner_name: impl.partner_name,
@@ -144,13 +146,14 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, accessEmails,
     bauHandoverStatus: canViewInternal ? (impl.bau_handover_status || 'N') : undefined,
     isAdmin,
     isSDC,
-    accessEmails,
+    isViewer,
+    accessEmails: isViewer ? [] : accessEmails,
     slackChannelId: canViewInternal ? (impl.slack_channel_id || '') : undefined,
     touchPoints,
     qaSteps,
     raid: raidRows.map(shapeRaid),
-    scope: (scopeRows || []).map(shapeScope),
-    documents: (docRows || []).map(shapeDoc),
+    scope: isViewer ? [] : (scopeRows || []).map(shapeScope),
+    documents: isViewer ? [] : (docRows || []).map(shapeDoc),
     meetingNotes: canViewInternal ? noteRows.map(shapeNote) : [],
     bloomreachOrgId: canViewInternal ? (impl.bloomreach_org_id || '') : undefined,
     bloomreachOrgName: canViewInternal ? (impl.bloomreach_org_name || '') : undefined,
@@ -191,32 +194,41 @@ async function callerIsSDC() {
   return data === true
 }
 
+async function callerIsViewer() {
+  const { data, error } = await supabase.rpc('is_viewer')
+  if (error) throw error
+  return data === true
+}
+
 // ---- Reads ----
 
 export async function getMyImplementations() {
   try {
-    const [isAdmin, isSDC, { data: impls, error }] = await Promise.all([
+    const [isAdmin, isSDC, isViewer, { data: impls, error }] = await Promise.all([
       callerIsAdmin(),
       callerIsSDC(),
+      callerIsViewer(),
       supabase.from('implementations').select('id, partner_name, client_name').order('partner_name'),
     ])
     if (error) throw error
-    if (!isAdmin && !isSDC && impls.length === 0) return { error: 'unauthorized' }
-    return { isAdmin, isSDC, implementations: impls }
+    if (!isAdmin && !isSDC && !isViewer && impls.length === 0) return { error: 'unauthorized' }
+    return { isAdmin, isSDC, isViewer, implementations: impls }
   } catch (e) { return fail(e) }
 }
 
 export async function getImplementation(_token, implementationId) {
   try {
-    const [isAdmin, isSDC] = await Promise.all([callerIsAdmin(), callerIsSDC()])
-    const canViewInternal = isAdmin || isSDC
+    const [isAdmin, isSDC, isViewer] = await Promise.all([callerIsAdmin(), callerIsSDC(), callerIsViewer()])
+    const canViewInternal = isAdmin || isSDC || isViewer
     const [impl, tps, raid, scope, docs, access, notes, scenarios, metrics, hours] = await Promise.all([
       supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
       supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
       supabase.from('raid_items').select('*').eq('implementation_id', implementationId).order('created_at'),
-      supabase.from('scope_items').select('*').eq('implementation_id', implementationId).order('category').order('position'),
-      supabase.from('documents').select('*').eq('implementation_id', implementationId).order('uploaded_at', { ascending: false }),
-      supabase.from('access').select('email').eq('implementation_id', implementationId),
+      // Viewers never see scope of work / documents / access lists — skip the
+      // queries entirely (RLS would return nothing anyway).
+      isViewer ? Promise.resolve({ data: [] }) : supabase.from('scope_items').select('*').eq('implementation_id', implementationId).order('category').order('position'),
+      isViewer ? Promise.resolve({ data: [] }) : supabase.from('documents').select('*').eq('implementation_id', implementationId).order('uploaded_at', { ascending: false }),
+      isViewer ? Promise.resolve({ data: [] }) : supabase.from('access').select('email').eq('implementation_id', implementationId),
       canViewInternal
         ? supabase.from('meeting_notes').select('*').eq('implementation_id', implementationId).order('meeting_date', { ascending: false })
         : Promise.resolve({ data: [] }),
@@ -231,14 +243,14 @@ export async function getImplementation(_token, implementationId) {
     const firstError = [impl, tps, raid, scope, docs, access, notes, scenarios, hours].find(r => r.error)
     if (firstError) throw firstError.error
     if (!impl.data) return { error: 'not_found' }
-    const partnerGrants = await supabase.from('partner_access')
+    const partnerGrants = isViewer ? { data: [] } : await supabase.from('partner_access')
       .select('email').ilike('partner_name', impl.data.partner_name)
     const emails = [
       ...access.data.map(a => a.email),
       ...(partnerGrants.data || []).map(g => `${g.email} (partner-wide)`),
     ]
     return buildImplResponse(
-      impl.data, tps.data, raid.data, isAdmin, isSDC,
+      impl.data, tps.data, raid.data, isAdmin, isSDC, isViewer,
       emails, notes.data, scenarios.data, scope.data, docs.data, metrics.data, hours.data,
     )
   } catch (e) { return fail(e) }
@@ -246,18 +258,18 @@ export async function getImplementation(_token, implementationId) {
 
 export async function getAllImplementations() {
   try {
-    const [isAdmin, isSDC] = await Promise.all([callerIsAdmin(), callerIsSDC()])
+    const [isAdmin, isSDC, isViewer] = await Promise.all([callerIsAdmin(), callerIsSDC(), callerIsViewer()])
     const [impls, tps, raid, scope, docs, access, notes, scenarios, metrics, partnerGrants, hours] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
       supabase.from('raid_items').select('*').order('created_at'),
-      supabase.from('scope_items').select('*').order('position'),
-      supabase.from('documents').select('*').order('uploaded_at', { ascending: false }),
-      supabase.from('access').select('email, implementation_id'),
+      isViewer ? Promise.resolve({ data: [] }) : supabase.from('scope_items').select('*').order('position'),
+      isViewer ? Promise.resolve({ data: [] }) : supabase.from('documents').select('*').order('uploaded_at', { ascending: false }),
+      isViewer ? Promise.resolve({ data: [] }) : supabase.from('access').select('email, implementation_id'),
       supabase.from('meeting_notes').select('*').order('meeting_date', { ascending: false }),
       supabase.from('scenario_sync').select('*').order('name'),
       supabase.from('usage_metrics').select('*'),
-      supabase.from('partner_access').select('email, partner_name'),
+      isViewer ? Promise.resolve({ data: [] }) : supabase.from('partner_access').select('email, partner_name'),
       supabase.from('workfront_hours').select('*'),
     ])
     const firstError = [impls, tps, raid, scope, docs, access, notes, scenarios, hours].find(r => r.error)
@@ -281,7 +293,7 @@ export async function getAllImplementations() {
     const metricMap = byImpl(metrics.data)
     const hoursMap = byImpl(hours.data)
     return impls.data.map(impl => buildImplResponse(
-      impl, tpMap[impl.id] || [], raidMap[impl.id] || [], isAdmin, isSDC,
+      impl, tpMap[impl.id] || [], raidMap[impl.id] || [], isAdmin, isSDC, isViewer,
       [
         ...(accessMap[impl.id] || []).map(a => a.email),
         ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
@@ -760,21 +772,23 @@ export async function deleteStepDefinition(step, implementationId) {
 // partner contact added via "Add implementation" before they've signed up).
 export async function getAllAccess() {
   try {
-    const [profiles, access, admins, sdc, partnerGrants, impls] = await Promise.all([
+    const [profiles, access, admins, sdc, viewers, partnerGrants, impls] = await Promise.all([
       supabase.from('profiles').select('id, email, created_at, declined').order('created_at', { ascending: false }),
       supabase.from('access').select('email, implementation_id'),
       supabase.from('admin_emails').select('email'),
       supabase.from('sdc_emails').select('email'),
+      supabase.from('viewer_emails').select('email'),
       supabase.from('partner_access').select('email, partner_name'),
       supabase.from('implementations').select('id, partner_name, client_name').order('partner_name'),
     ])
-    const firstError = [profiles, access, admins, sdc, partnerGrants, impls].find(r => r.error)
+    const firstError = [profiles, access, admins, sdc, viewers, partnerGrants, impls].find(r => r.error)
     if (firstError) throw firstError.error
     return {
       profiles: profiles.data,
       access: access.data,
       admins: (admins.data || []).map(a => a.email),
       sdc: (sdc.data || []).map(a => a.email),
+      viewers: (viewers.data || []).map(a => a.email),
       partnerGrants: partnerGrants.data,
       implementations: impls.data,
     }
@@ -788,6 +802,11 @@ export async function removeAdminAccess(email) {
 
 export async function removeSDCAccess(email) {
   const { error } = await supabase.from('sdc_emails').delete().eq('email', email.trim().toLowerCase())
+  return error ? fail(error) : { ok: true }
+}
+
+export async function removeViewerAccess(email) {
+  const { error } = await supabase.from('viewer_emails').delete().eq('email', email.trim().toLowerCase())
   return error ? fail(error) : { ok: true }
 }
 
@@ -812,7 +831,7 @@ export async function deleteUserAccount(userId) {
 
 // ---- Sign-up approval ----
 
-// target: { type: 'admin' } | { type: 'sdc' } | { type: 'partner', partnerName } | { type: 'implementation', id }
+// target: { type: 'admin' } | { type: 'sdc' } | { type: 'viewer' } | { type: 'partner', partnerName } | { type: 'implementation', id }
 // Also reused directly by the Permissions page to grant access to anyone,
 // signed up or not — the shape of "grant X to this email" is identical.
 export async function approveSignup(email, target) {
@@ -823,6 +842,10 @@ export async function approveSignup(email, target) {
   }
   if (target.type === 'sdc') {
     const { error } = await supabase.from('sdc_emails').insert({ email: clean })
+    return error ? fail(error) : { ok: true }
+  }
+  if (target.type === 'viewer') {
+    const { error } = await supabase.from('viewer_emails').insert({ email: clean })
     return error ? fail(error) : { ok: true }
   }
   if (target.type === 'partner') {
@@ -849,11 +872,12 @@ export async function declineSignup(profileId) {
 
 export async function getPendingSignups() {
   try {
-    const [profiles, access, admins, sdc, partnerGrants] = await Promise.all([
+    const [profiles, access, admins, sdc, viewers, partnerGrants] = await Promise.all([
       supabase.from('profiles').select('id, email, created_at').eq('declined', false).order('created_at', { ascending: false }),
       supabase.from('access').select('email'),
       supabase.from('admin_emails').select('email'),
       supabase.from('sdc_emails').select('email'),
+      supabase.from('viewer_emails').select('email'),
       supabase.from('partner_access').select('email'),
     ])
     if (profiles.error) return []
@@ -861,6 +885,7 @@ export async function getPendingSignups() {
       ...(access.data || []).map(a => a.email),
       ...(admins.data || []).map(a => a.email),
       ...(sdc.data || []).map(a => a.email),
+      ...(viewers.data || []).map(a => a.email),
       ...(partnerGrants.data || []).map(a => a.email),
     ])
     return profiles.data.filter(p => !known.has(p.email))
@@ -899,6 +924,7 @@ export async function loadUserInfo(session) {
     name: session.user.email,
     isAdmin: info.isAdmin,
     isSDC: info.isSDC,
+    isViewer: info.isViewer,
     implementations: info.implementations,
   }
 }

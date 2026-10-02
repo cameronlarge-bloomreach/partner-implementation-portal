@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllAccess, approveSignup, removeAccess, removeAdminAccess, removeSDCAccess, removePartnerAccess, deleteUserAccount } from '../api'
+import { getAllAccess, approveSignup, removeAccess, removeAdminAccess, removeSDCAccess, removeViewerAccess, removePartnerAccess, deleteUserAccount } from '../api'
 import Navbar from '../components/Navbar'
 
 function Chip({ children, onRemove, removing }) {
@@ -39,6 +39,8 @@ function GrantSelect({ partners, implementations, onGrant, busy }) {
       ? { type: 'admin' }
       : choice === 'sdc'
       ? { type: 'sdc' }
+      : choice === 'viewer'
+      ? { type: 'viewer' }
       : choice.startsWith('partner:')
       ? { type: 'partner', partnerName: choice.slice(8) }
       : { type: 'implementation', id: choice.slice(5) }
@@ -68,6 +70,7 @@ function GrantSelect({ partners, implementations, onGrant, busy }) {
         <optgroup label="Bloomreach">
           <option value="admin">Make admin — full access to everything</option>
           <option value="sdc">Make SDC — sees everything, can only edit QA docs</option>
+          <option value="viewer">Make Viewer — sees most things, can't edit, no documents</option>
         </optgroup>
       </select>
       <button
@@ -88,7 +91,7 @@ function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke,
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState(null)
   const isSelf = row.email === selfEmail
-  const hasAnyAccess = row.isAdmin || row.isSDC || row.partners.length > 0 || row.implementations.length > 0
+  const hasAnyAccess = row.isAdmin || row.isSDC || row.isViewer || row.partners.length > 0 || row.implementations.length > 0
 
   async function revoke(kind, label, extra) {
     if (!confirm(`Remove ${label} for ${row.email}?`)) return
@@ -137,6 +140,14 @@ function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke,
             onRemove={isSelf ? undefined : () => revoke('sdc', 'SDC access')}
           >
             SDC{isSelf ? ' (you)' : ''}
+          </Chip>
+        )}
+        {row.isViewer && (
+          <Chip
+            removing={removing === 'viewer'}
+            onRemove={() => revoke('viewer', 'viewer access')}
+          >
+            Viewer
           </Chip>
         )}
         {row.partners.map(p => (
@@ -240,6 +251,7 @@ export default function Permissions({ userInfo, onLogout }) {
       ...data.access.map(a => a.email),
       ...data.admins,
       ...data.sdc,
+      ...data.viewers,
       ...data.partnerGrants.map(g => g.email),
     ])
     return Array.from(emails).sort().map(email => ({
@@ -248,6 +260,7 @@ export default function Permissions({ userInfo, onLogout }) {
       userId: profileByEmail[email]?.id || null,
       isAdmin: data.admins.includes(email),
       isSDC: data.sdc.includes(email),
+      isViewer: data.viewers.includes(email),
       partners: data.partnerGrants.filter(g => g.email === email).map(g => g.partner_name),
       implementations: data.access.filter(a => a.email === email).map(a => implMap[a.implementation_id]).filter(Boolean),
     }))
@@ -265,6 +278,7 @@ export default function Permissions({ userInfo, onLogout }) {
   async function handleRevoke(email, kind, extra) {
     const res = kind === 'admin' ? await removeAdminAccess(email)
       : kind === 'sdc' ? await removeSDCAccess(email)
+      : kind === 'viewer' ? await removeViewerAccess(email)
       : kind === 'partner' ? await removePartnerAccess(email, extra)
       : await removeAccess(null, extra, email)
     if (res.error) return res.error
