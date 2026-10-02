@@ -67,8 +67,10 @@ export default function Analytics({ credential, userInfo, onLogout }) {
       .finally(() => setLoading(false))
   }, [])
 
-  const linked = implementations.filter(i => i.bloomreachOrgId)
-  const unlinkedCount = implementations.length - linked.length
+  // Closed implementations drop off the analytics screen.
+  const open = implementations.filter(i => i.status !== 'complete')
+  const linked = open.filter(i => i.bloomreachOrgId)
+  const unlinkedCount = open.length - linked.length
 
   // One entry per client, carrying its model's two meters.
   const clients = linked.map(impl => {
