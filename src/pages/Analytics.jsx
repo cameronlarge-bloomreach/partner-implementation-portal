@@ -21,13 +21,19 @@ function band(pct) {
   return { color: 'var(--moss)', label: null }
 }
 
-function Tile({ value, label, warn }) {
+function Tile({ value, label, warn, active, onClick }) {
   return (
-    <div className="bg-white rounded-2xl relative overflow-hidden" style={{ border: '1px solid var(--hairline)', padding: '16px 18px' }}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className="bg-white rounded-2xl relative overflow-hidden text-left cursor-pointer transition-shadow hover:shadow-md"
+      style={{ border: active ? '1px solid var(--ink)' : '1px solid var(--hairline)', boxShadow: active ? '0 0 0 1px var(--ink)' : undefined, padding: '16px 18px' }}
+    >
       <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: warn ? 'var(--rust)' : 'var(--gold)' }} />
       <p className="font-mono text-[28px] font-semibold leading-none" style={{ color: warn ? 'var(--rust)' : 'var(--ink)' }}>{value}</p>
       <p className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>{label}</p>
-    </div>
+    </button>
   )
 }
 
@@ -49,6 +55,14 @@ function MeterLine({ meter }) {
   )
 }
 
+// Which clients each summary tile shows when clicked.
+const STAT_FILTERS = {
+  all: () => true,
+  limits: c => c.meters.some(m => m.limit),
+  near: c => c.meters.some(m => m.pct !== null && m.pct >= 85 && m.pct < 100),
+  over: c => c.meters.some(m => m.pct !== null && m.pct >= 100),
+}
+
 const MODEL_FILTERS = [['all', 'All'], ['profiles', 'Profiles'], ['events', 'Events']]
 
 export default function Analytics({ credential, userInfo, onLogout }) {
@@ -56,6 +70,7 @@ export default function Analytics({ credential, userInfo, onLogout }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [modelFilter, setModelFilter] = useState('all')
+  const [statFilter, setStatFilter] = useState('all')
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -87,7 +102,9 @@ export default function Analytics({ credential, userInfo, onLogout }) {
     return { impl, model, meters, worst, updated }
   })
 
-  const filtered = modelFilter === 'all' ? clients : clients.filter(c => c.model === modelFilter)
+  const filtered = clients
+    .filter(c => modelFilter === 'all' || c.model === modelFilter)
+    .filter(STAT_FILTERS[statFilter])
 
   // Clients with the highest single-meter utilisation first; untracked after.
   const sorted = [...filtered].sort((a, b) => {
@@ -130,10 +147,21 @@ export default function Analytics({ credential, userInfo, onLogout }) {
         ) : (
           <>
             <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-              <Tile value={linked.length} label="Linked clients" />
-              <Tile value={metersTracked} label="Meters with a limit" />
-              <Tile value={nearLimit} label="Near limit (≥85%)" warn={nearLimit > 0} />
-              <Tile value={overLimit} label="Over limit" warn={overLimit > 0} />
+              {[
+                ['all', linked.length, 'Linked clients', false],
+                ['limits', metersTracked, 'Meters with a limit', false],
+                ['near', nearLimit, 'Near limit (≥85%)', nearLimit > 0],
+                ['over', overLimit, 'Over limit', overLimit > 0],
+              ].map(([key, value, label, warn]) => (
+                <Tile
+                  key={key}
+                  value={value}
+                  label={label}
+                  warn={warn}
+                  active={statFilter === key && key !== 'all'}
+                  onClick={() => setStatFilter(statFilter === key ? 'all' : key)}
+                />
+              ))}
             </div>
 
             <div className="flex items-center gap-2" style={{ marginBottom: '18px' }}>
@@ -153,7 +181,9 @@ export default function Analytics({ credential, userInfo, onLogout }) {
 
             {sorted.length === 0 ? (
               <div className="bg-white rounded-2xl p-12 text-center text-sm" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
-                No {modelFilter !== 'all' ? modelFilter + '-model ' : ''}clients recorded yet — set limits from the Internal tab on an implementation.
+                {statFilter !== 'all' || modelFilter !== 'all'
+                  ? 'No clients match this filter.'
+                  : 'No clients recorded yet — set limits from the Internal tab on an implementation.'}
               </div>
             ) : (
               <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
