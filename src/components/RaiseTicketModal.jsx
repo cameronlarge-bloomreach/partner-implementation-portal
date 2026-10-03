@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ModalShell from './ModalShell'
 import { raiseSdcTicket, attachTicketToWorkbook } from '../api'
 import { JOB_TYPE_OPTIONS, PRIORITY_OPTIONS } from '../clickupTicket'
 
@@ -49,15 +50,15 @@ export default function RaiseTicketModal({ implementationId, stepKey, workbookLa
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-lg flex flex-col" style={{ border: '1px solid var(--hairline)', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+    <ModalShell onClose={onClose} panelClassName="max-w-lg" panelStyle={{ maxHeight: '90vh' }}>
+      {close => (<>
         <div className="px-6 pt-5 pb-4 flex-shrink-0" style={{ borderBottom: '2px solid #000' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--arctic)' }}>SDC Tickets · Backlog</div>
               <h2 className="font-display text-xl font-semibold mt-1" style={{ color: 'var(--ink)' }}>Raise ClickUp ticket</h2>
             </div>
-            <button onClick={onClose} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+            <button onClick={close} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
           </div>
           <p className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>
             {psmName
@@ -75,7 +76,7 @@ export default function RaiseTicketModal({ implementationId, stepKey, workbookLa
               Open in ClickUp ↗
             </a>
             <div className="mt-4">
-              <button onClick={onClose} className="text-sm" style={{ color: 'var(--muted)' }}>Close</button>
+              <button onClick={close} className="text-sm" style={{ color: 'var(--muted)' }}>Close</button>
             </div>
           </div>
         ) : (
@@ -138,7 +139,7 @@ export default function RaiseTicketModal({ implementationId, stepKey, workbookLa
             {error && <p className="text-xs" style={{ color: 'var(--rust)' }}>{error}</p>}
 
             <div className="flex items-center gap-2 pt-1">
-              <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg" style={{ color: 'var(--muted)' }}>Cancel</button>
+              <button type="button" onClick={close} className="text-sm px-4 py-2 rounded-lg" style={{ color: 'var(--muted)' }}>Cancel</button>
               <button type="submit" disabled={submitting}
                 className="text-black text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
                 {submitting ? 'Raising…' : 'Raise ticket'}
@@ -146,7 +147,7 @@ export default function RaiseTicketModal({ implementationId, stepKey, workbookLa
             </div>
           </form>
         )}
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ModalShell from './ModalShell'
 import { CHANGELOG } from '../changelog'
 
 const STORAGE_KEY = 'blimp-last-seen-changelog'
@@ -26,15 +27,15 @@ export default function WhatsNewModal() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={handleDismiss}>
-      <div className="bg-white rounded-2xl w-full max-w-md flex flex-col overflow-hidden" style={{ border: '1px solid var(--hairline)', maxHeight: '85vh' }} onClick={e => e.stopPropagation()}>
+    <ModalShell onClose={handleDismiss} panelClassName="max-w-md overflow-hidden" panelStyle={{ maxHeight: '85vh' }}>
+      {close => (<>
         <div className="px-6 pt-5 pb-4 flex-shrink-0" style={{ borderBottom: '2px solid #000' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--arctic)' }}>What's new</div>
               <h2 className="font-display text-xl font-semibold mt-1" style={{ color: 'var(--ink)' }}>Bloomreach Blimp updates</h2>
             </div>
-            <button onClick={handleDismiss} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+            <button onClick={close} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
           </div>
         </div>
 
@@ -52,12 +53,12 @@ export default function WhatsNewModal() {
         </div>
 
         <div className="px-6 py-4 flex-shrink-0" style={{ borderTop: '1px solid var(--hairline)' }}>
-          <button onClick={handleDismiss}
+          <button onClick={close}
             className="text-black text-sm font-semibold px-4 py-2 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
             Got it
           </button>
         </div>
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   )
 }

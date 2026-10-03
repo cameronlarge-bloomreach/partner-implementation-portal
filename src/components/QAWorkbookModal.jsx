@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { getQAWorkbook, saveQAWorkbook } from '../api'
+import ModalShell from './ModalShell'
 import { QA_WORKBOOKS, STATUSES, SEVERITIES, emptyWorkbookData, computeVerdict } from '../qaWorkbooks'
 
 function StatusPill({ value, active, onClick, disabled }) {
@@ -171,8 +172,8 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
   const doneCount = workbook.checks.filter(c => data.checks[c.key]?.status).length
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={handleClose}>
-      <div className="bg-white rounded-2xl w-full max-w-3xl flex flex-col" style={{ border: '1px solid var(--hairline)', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+    <ModalShell onClose={handleClose} panelClassName="max-w-3xl" panelStyle={{ maxHeight: '90vh' }}>
+      {close => (<>
         {/* Header */}
         <div className="px-7 pt-6 pb-5 rounded-t-2xl flex-shrink-0" style={{ borderBottom: '2px solid #000' }}>
           <div className="flex items-start justify-between gap-4">
@@ -186,7 +187,7 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
               <button onClick={copyLink} className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors" style={{ border: '1px solid var(--hairline)', color: linkCopied ? 'var(--moss)' : 'var(--arctic)' }}>
                 {linkCopied ? 'Link copied ✓' : 'Copy link'}
               </button>
-              <button onClick={handleClose} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+              <button onClick={close} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mt-3 text-[11.5px]" style={{ color: 'var(--muted)' }}>
@@ -360,13 +361,13 @@ export default function QAWorkbookModal({ credential, implementationId, stepKey,
             {saving ? 'Saving…' : saved ? 'Saved' : dirtyRef.current ? 'Unsaved changes' : 'Autosaves as you go'}
           </span>
           <div className="flex items-center gap-2">
-            <button onClick={handleClose} className="text-sm px-4 py-1.5 rounded-lg" style={{ color: 'var(--muted)' }}>Close</button>
+            <button onClick={close} className="text-sm px-4 py-1.5 rounded-lg" style={{ color: 'var(--muted)' }}>Close</button>
             <button onClick={doSave} disabled={saving} className="text-black text-sm font-medium px-4 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
               {saving ? 'Saving…' : 'Save now'}
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   )
 }

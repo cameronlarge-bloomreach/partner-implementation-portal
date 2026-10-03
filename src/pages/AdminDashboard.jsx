@@ -6,6 +6,8 @@ import {
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
+import Collapse from '../components/Collapse'
+import { DashboardSkeleton } from '../components/Skeleton'
 
 function getProgress(impl, tpKeys) {
   if (!tpKeys.length) return 0
@@ -272,8 +274,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
         )}
 
         {/* Add partner form */}
-        {showAdd && (
-          <div className="no-print bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--hairline)' }}>
+        <Collapse open={showAdd} className="no-print">
+          <div className="bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--hairline)' }}>
             <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Add new partner implementation</h2>
             <p className="text-xs mb-4 mt-0.5" style={{ color: 'var(--muted)' }}>Starts as Pending — mark it Active once the client's signed, from the implementation's Setup tab.</p>
             <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
@@ -345,10 +347,10 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               </div>
             </form>
           </div>
-        )}
+        </Collapse>
 
         {loading ? (
-          <div className="text-center py-20 text-sm" style={{ color: 'var(--muted)' }}>Loading…</div>
+          <DashboardSkeleton />
         ) : error ? (
           <div className="text-center py-20 text-sm" style={{ color: 'var(--rust)' }}>{error}</div>
         ) : implementations.length === 0 ? (
@@ -428,8 +430,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                     <span className="text-xs" style={{ color: 'var(--muted)' }}>{group.impls.length} implementation{group.impls.length !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                    {group.impls.map(impl => (
-                      <ImplCard key={impl.id} impl={impl} tpKeys={tpKeys} qaKeys={qaKeys} />
+                    {group.impls.map((impl, i) => (
+                      <ImplCard key={impl.id} impl={impl} tpKeys={tpKeys} qaKeys={qaKeys} index={i} />
                     ))}
                   </div>
                 </div>
@@ -462,13 +464,13 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   <span className={`inline-block transition-transform ${showCompleted ? 'rotate-90' : ''}`}>›</span>
                   Closed ({completedImpls.length})
                 </button>
-                {showCompleted && (
-                  <div className="grid gap-3 mt-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+                <Collapse open={showCompleted}>
+                  <div className="grid gap-3 pt-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
                     {completedImpls.map(impl => (
                       <StatusCard key={impl.id} impl={impl} statusKey="complete" />
                     ))}
                   </div>
-                )}
+                </Collapse>
               </div>
             )}
           </>
@@ -478,7 +480,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   )
 }
 
-function ImplCard({ impl, tpKeys, qaKeys }) {
+function ImplCard({ impl, tpKeys, qaKeys, index = 0 }) {
   const tpDone = tpKeys.filter(k => (impl.touchPoints || {})[k] === 'complete').length
   const qaDone = qaKeys.filter(k => (impl.qaSteps || {})[k] === 'complete').length
   const progress = getProgress(impl, tpKeys)
@@ -488,10 +490,8 @@ function ImplCard({ impl, tpKeys, qaKeys }) {
   return (
     <Link
       to={`/admin/implementation/${impl.id}`}
-      className="block bg-white rounded-2xl p-4 transition-shadow"
-      style={{ border: '1px solid var(--hairline)' }}
-      onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 4px 18px rgba(10,10,10,0.08)' }}
-      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+      className="impl-card pressable card-enter block bg-white rounded-2xl p-4"
+      style={{ border: '1px solid var(--hairline)', '--i': Math.min(index, 8) }}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</span>
@@ -558,7 +558,7 @@ function StatusCard({ impl, statusKey }) {
   return (
     <Link
       to={`/admin/implementation/${impl.id}`}
-      className="block bg-white rounded-2xl p-4"
+      className="impl-card pressable block bg-white rounded-2xl p-4"
       style={{ border: '1px solid var(--hairline)', opacity: 0.85 }}
     >
       <div className="flex items-center justify-between gap-2">

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ModalShell from './ModalShell'
 import { upsertUsageMetric, USAGE_METERS, CONTRACT_ALLOWANCES } from '../api'
 
 // Every metric_key this app knows about, keyed for easy label lookup —
@@ -48,15 +49,15 @@ export default function ContractReviewModal({ credential, implementationId, doc,
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(10,10,10,0.45)' }} onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-2xl flex flex-col" style={{ border: '1px solid var(--hairline)', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+    <ModalShell onClose={onClose} panelClassName="max-w-2xl" panelStyle={{ maxHeight: '90vh' }}>
+      {close => (<>
         <div className="px-6 pt-5 pb-4 flex-shrink-0" style={{ borderBottom: '2px solid #000' }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: 'var(--arctic)' }}>Extracted from {doc.file_name}</div>
               <h2 className="font-display text-xl font-semibold mt-1" style={{ color: 'var(--ink)' }}>Review usage limits</h2>
             </div>
-            <button onClick={onClose} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+            <button onClick={close} className="text-2xl leading-none" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
           </div>
           <p className="text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>
             AI-extracted — check every value against the raw text before saving. Nothing is written until you confirm below.
@@ -67,7 +68,7 @@ export default function ContractReviewModal({ credential, implementationId, doc,
           <div className="px-6 py-8 text-center">
             <div className="text-sm font-medium mb-1" style={{ color: 'var(--moss)' }}>Saved ✓</div>
             <p className="text-sm mb-4" style={{ color: 'var(--muted)' }}>Usage limits updated.</p>
-            <button onClick={onClose} className="text-sm" style={{ color: 'var(--muted)' }}>Close</button>
+            <button onClick={close} className="text-sm" style={{ color: 'var(--muted)' }}>Close</button>
           </div>
         ) : (
           <>
@@ -130,7 +131,7 @@ export default function ContractReviewModal({ credential, implementationId, doc,
             </div>
 
             <div className="px-6 py-4 flex-shrink-0 flex items-center gap-2" style={{ borderTop: '1px solid var(--hairline)' }}>
-              <button type="button" onClick={onClose} className="text-sm px-4 py-2 rounded-lg" style={{ color: 'var(--muted)' }}>Cancel</button>
+              <button type="button" onClick={close} className="text-sm px-4 py-2 rounded-lg" style={{ color: 'var(--muted)' }}>Cancel</button>
               <button type="button" onClick={handleConfirm} disabled={saving || known.every(m => !rows[m.metricKey]?.checked)}
                 className="text-black text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
                 {saving ? 'Saving…' : 'Confirm & Save'}
@@ -138,7 +139,7 @@ export default function ContractReviewModal({ credential, implementationId, doc,
             </div>
           </>
         )}
-      </div>
-    </div>
+      </>)}
+    </ModalShell>
   )
 }
