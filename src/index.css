@@ -142,18 +142,19 @@ button:not(:disabled):active {
   transition: opacity 220ms ease-out, transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
-/* ── Collapse (grid 0fr → 1fr) ─────────────────────────────── */
-.collapse {
+/* ── Expand/collapse (grid 0fr → 1fr). Named .xpand, NOT .collapse: Tailwind
+   ships a .collapse utility (visibility: collapse) that hid the content. ── */
+.xpand {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
   transition: grid-template-rows 240ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 160ms ease;
 }
-.collapse[data-open='true'] {
+.xpand[data-open='true'] {
   grid-template-rows: 1fr;
   opacity: 1;
 }
-.collapse-inner {
+.xpand-inner {
   overflow: hidden;
   min-height: 0;
 }

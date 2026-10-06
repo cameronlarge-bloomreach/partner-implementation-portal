@@ -4,8 +4,8 @@
 // assistive tech, but stays mounted so form state survives a close.
 export default function Collapse({ open, className = '', children }) {
   return (
-    <div className={`collapse ${className}`} data-open={open} inert={!open} aria-hidden={!open}>
-      <div className="collapse-inner">{children}</div>
+    <div className={`xpand ${className}`} data-open={open} inert={!open} aria-hidden={!open}>
+      <div className="xpand-inner">{children}</div>
     </div>
   )
 }
