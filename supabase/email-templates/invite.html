@@ -1,0 +1,138 @@
+<!--
+  BLIMP "Invite user" email. Paste into Supabase → Authentication →
+  Emails → Templates → Invite user (subject line below).
+
+  Subject: {{ if .Data.first_name }}{{ .Data.first_name }}, you{{ else }}You{{ end }}'re invited to BLIMP — Bloomreach's partner implementation portal
+
+  The button deliberately links to {{ .RedirectTo }}?token_hash=…&type=invite
+  rather than {{ .ConfirmationURL }}: the portal uses PKCE + HashRouter, and
+  consumeInviteLink() in src/api.js exchanges the token_hash itself.
+  Personalisation comes from user metadata set by the invite-user edge
+  function: first_name, invited_by, access_label (all optional).
+  Table layout + inline styles because email clients ignore most CSS.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>You're invited to BLIMP</title>
+</head>
+<body style="margin:0; padding:0; background:#fbfaf6; -webkit-text-size-adjust:100%;">
+  <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
+    {{ if .Data.invited_by }}{{ .Data.invited_by }} has invited you{{ else }}You've been invited{{ end }} to track your Bloomreach implementation in one place.
+  </div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fbfaf6;">
+    <tr>
+      <td align="center" style="padding:40px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+
+          <!-- Logo -->
+          <tr>
+            <td align="left" style="padding:0 4px 24px;">
+              <img src="https://partner-blimp.com/email/bloomreach-logo.png" width="120" alt="Bloomreach" style="display:block; border:0; height:auto;">
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:#ffffff; border:1px solid #e8e4d9; border-radius:16px; overflow:hidden;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <!-- Gold band -->
+                <tr>
+                  <td style="background:#ffd500; height:6px; line-height:6px; font-size:0;">&nbsp;</td>
+                </tr>
+
+                <tr>
+                  <td style="padding:40px 40px 8px; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
+                    <p style="margin:0 0 12px; font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:#6b6b63; font-weight:600;">
+                      Partner Implementation Portal
+                    </p>
+                    <h1 style="margin:0 0 16px; font-size:28px; line-height:1.2; color:#0a0a0a; font-weight:700;">
+                      {{ if .Data.first_name }}Welcome, {{ .Data.first_name }}.{{ else }}You're invited.{{ end }}
+                    </h1>
+                    <p style="margin:0 0 16px; font-size:16px; line-height:1.6; color:#0a0a0a;">
+                      {{ if .Data.invited_by }}<strong>{{ .Data.invited_by }}</strong> at Bloomreach has invited you{{ else }}Bloomreach has invited you{{ end }} to <strong>BLIMP</strong> — the portal where we track your implementation together.
+                    </p>
+                    {{ if .Data.access_label }}
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+                      <tr>
+                        <td style="background:#fbfaf6; border:1px solid #e8e4d9; border-radius:10px; padding:12px 16px; font-size:14px; color:#0a0a0a;">
+                          <span style="color:#6b6b63;">You have access to</span><br>
+                          <strong style="font-size:15px;">{{ .Data.access_label }}</strong>
+                        </td>
+                      </tr>
+                    </table>
+                    {{ end }}
+                  </td>
+                </tr>
+
+                <!-- What you can do -->
+                <tr>
+                  <td style="padding:0 40px 8px; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td width="28" valign="top" style="padding:0 0 12px; font-size:15px; color:#1f7a4d; font-weight:700;">✓</td>
+                        <td style="padding:0 0 12px; font-size:15px; line-height:1.5; color:#0a0a0a;">See progress and key dates for every step of the rollout</td>
+                      </tr>
+                      <tr>
+                        <td width="28" valign="top" style="padding:0 0 12px; font-size:15px; color:#1f7a4d; font-weight:700;">✓</td>
+                        <td style="padding:0 0 12px; font-size:15px; line-height:1.5; color:#0a0a0a;">Keep risks, actions and decisions in one shared place</td>
+                      </tr>
+                      <tr>
+                        <td width="28" valign="top" style="padding:0 0 12px; font-size:15px; color:#1f7a4d; font-weight:700;">✓</td>
+                        <td style="padding:0 0 12px; font-size:15px; line-height:1.5; color:#0a0a0a;">Find the documents and QA checklists for your project</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Button -->
+                <tr>
+                  <td align="left" style="padding:16px 40px 8px; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" style="background:#0a0a0a; border-radius:10px;">
+                          <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite"
+                             style="display:inline-block; padding:14px 28px; font-size:15px; font-weight:600; color:#ffffff; text-decoration:none; border-radius:10px;">
+                            Accept invite &amp; set password &rarr;
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+                    <p style="margin:16px 0 0; font-size:13px; line-height:1.5; color:#6b6b63;">
+                      You'll choose a password, then sign in with this email from then on.
+                    </p>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="padding:32px 40px 36px; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif;">
+                    <p style="margin:0; padding-top:20px; border-top:1px solid #e8e4d9; font-size:12px; line-height:1.6; color:#6b6b63;">
+                      Button not working? Copy this link into your browser:<br>
+                      <a href="{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite" style="color:#017aaa; word-break:break-all;">{{ .RedirectTo }}?token_hash={{ .TokenHash }}&amp;type=invite</a>
+                    </p>
+                    <p style="margin:12px 0 0; font-size:12px; line-height:1.6; color:#6b6b63;">
+                      The link works once and expires after a while — if it has, go to <a href="https://partner-blimp.com" style="color:#017aaa;">partner-blimp.com</a> and use “Forgot password?” with this email address.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding:24px 16px 0; font-family:'Helvetica Neue', Helvetica, Arial, sans-serif; font-size:12px; line-height:1.6; color:#6b6b63;">
+              Sent to {{ .Email }} because a Bloomreach team member invited you to BLIMP.<br>
+              Not expecting this? You can safely ignore it.
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

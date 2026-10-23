@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAllAccess, approveSignup, removeAccess, removeAdminAccess, removeSDCAccess, removeViewerAccess, removePartnerAccess, deleteUserAccount } from '../api'
+import { getAllAccess, approveSignup, inviteUser, removeAccess, removeAdminAccess, removeSDCAccess, removeViewerAccess, removePartnerAccess, deleteUserAccount } from '../api'
 import Navbar from '../components/Navbar'
+
+// How a grant reads in the Invite email ("You've been given access to …").
+function accessLabel(target, implementations) {
+  if (target.type === 'admin') return 'BLIMP as an admin'
+  if (target.type === 'sdc') return 'BLIMP as an SDC'
+  if (target.type === 'viewer') return 'BLIMP as a viewer'
+  if (target.type === 'partner') return `all ${target.partnerName} implementations`
+  const impl = implementations.find(i => String(i.id) === String(target.id))
+  return impl ? `${impl.partner_name} × ${impl.client_name}` : null
+}
 
 function Chip({ children, onRemove, removing }) {
   return (
@@ -85,8 +95,10 @@ function GrantSelect({ partners, implementations, onGrant, busy }) {
   )
 }
 
-function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke, onDelete }) {
+function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke, onDelete, onInvite }) {
   const [removing, setRemoving] = useState(null)
+  const [inviting, setInviting] = useState(false)
+  const [invited, setInvited] = useState(false)
   const [granting, setGranting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState(null)
@@ -110,6 +122,21 @@ function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke,
     return err
   }
 
+  async function handleInvite() {
+    setInviting(true)
+    setError(null)
+    const label = row.isAdmin ? 'BLIMP as an admin'
+      : row.isSDC ? 'BLIMP as an SDC'
+      : row.isViewer ? 'BLIMP as a viewer'
+      : row.partners.length ? `all ${row.partners[0]} implementations`
+      : row.implementations[0] ? `${row.implementations[0].partner_name} × ${row.implementations[0].client_name}`
+      : null
+    const err = await onInvite(row.email, { accessLabel: label, partnerName: row.partners[0] || row.implementations[0]?.partner_name })
+    setInviting(false)
+    if (err) setError(err)
+    else setInvited(true)
+  }
+
   async function handleDelete() {
     if (!confirm(`Permanently delete ${row.email}'s account? This can't be undone — they'll lose their login and all access, and would need to sign up again from scratch.`)) return
     if (!confirm(`Really sure? This deletes the account itself, not just their access.`)) return
@@ -124,6 +151,20 @@ function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke,
       <div className="flex flex-wrap items-baseline gap-2 mb-2.5">
         <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{row.email}</span>
         {!row.hasAccount && <span className="text-xs" style={{ color: 'var(--muted)' }}>no account yet</span>}
+        {!row.hasAccount && hasAnyAccess && (
+          invited
+            ? <span className="text-xs" style={{ color: 'var(--moss)' }}>Invite sent ✓</span>
+            : (
+              <button
+                onClick={handleInvite}
+                disabled={inviting}
+                className="disabled:opacity-50 text-xs font-medium hover:underline"
+                style={{ color: 'var(--arctic-dark)' }}
+              >
+                {inviting ? 'Sending…' : 'Send invite email'}
+              </button>
+            )
+        )}
       </div>
       <div className="flex flex-wrap gap-1.5 mb-2.5">
         {row.isAdmin && (
@@ -180,8 +221,11 @@ function UserRow({ row, partners, implementations, selfEmail, onGrant, onRevoke,
   )
 }
 
-function AddPersonCard({ partners, implementations, onGrant }) {
+function AddPersonCard({ partners, implementations, onGrant, onInvite }) {
   const [email, setEmail] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [sendInvite, setSendInvite] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [done, setDone] = useState(false)
@@ -190,12 +234,25 @@ function AddPersonCard({ partners, implementations, onGrant }) {
     if (!email.trim()) { setError('Enter an email first.'); return 'Enter an email first.' }
     setBusy(true)
     setError(null)
-    const err = await onGrant(email.trim().toLowerCase(), target)
+    const clean = email.trim().toLowerCase()
+    const err = await onGrant(clean, target)
+    if (err) { setBusy(false); setError(err); return err }
+    if (sendInvite) {
+      const inviteErr = await onInvite(clean, {
+        firstName, lastName,
+        partnerName: target.partnerName
+          || implementations.find(i => String(i.id) === String(target.id))?.partner_name,
+        accessLabel: accessLabel(target, implementations),
+      })
+      // Access is granted either way — report the invite failure without undoing it.
+      if (inviteErr) { setBusy(false); setError(`Access granted, but the invite wasn’t sent: ${inviteErr}`); return inviteErr }
+    }
     setBusy(false)
-    if (err) { setError(err); return err }
-    setDone(true)
+    setDone(sendInvite ? 'Granted and invite sent ✓' : 'Granted ✓')
     setEmail('')
-    setTimeout(() => setDone(false), 2000)
+    setFirstName('')
+    setLastName('')
+    setTimeout(() => setDone(false), 3000)
     return null
   }
 
@@ -203,8 +260,30 @@ function AddPersonCard({ partners, implementations, onGrant }) {
     <div className="bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--hairline)' }}>
       <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Grant access to someone new</h2>
       <p className="text-xs mt-0.5 mb-4" style={{ color: 'var(--muted)' }}>
-        They don't need an account yet — this works the same whether they've signed up or not.
+        They don't need an account yet — tick “Email them an invite” to send a branded email that lets them set a password and sign straight in. They can still sign up themselves instead.
       </p>
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <input
+          type="text"
+          value={firstName}
+          onChange={e => setFirstName(e.target.value)}
+          placeholder="First name"
+          className="rounded-lg px-3 py-2 text-sm focus:outline-none w-36"
+          style={{ border: '1px solid var(--hairline)' }}
+        />
+        <input
+          type="text"
+          value={lastName}
+          onChange={e => setLastName(e.target.value)}
+          placeholder="Last name"
+          className="rounded-lg px-3 py-2 text-sm focus:outline-none w-36"
+          style={{ border: '1px solid var(--hairline)' }}
+        />
+        <label className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--ink)' }}>
+          <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)} />
+          Email them an invite
+        </label>
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="email"
@@ -215,7 +294,7 @@ function AddPersonCard({ partners, implementations, onGrant }) {
           style={{ border: '1px solid var(--hairline)' }}
         />
         <GrantSelect partners={partners} implementations={implementations} onGrant={grant} busy={busy} />
-        {done && <span className="text-xs" style={{ color: 'var(--moss)' }}>Granted ✓</span>}
+        {done && <span className="text-xs" style={{ color: 'var(--moss)' }}>{done}</span>}
       </div>
       {error && <p className="text-xs mt-1.5" style={{ color: 'var(--rust)' }}>{error}</p>}
     </div>
@@ -286,6 +365,11 @@ export default function Permissions({ userInfo, onLogout }) {
     return null
   }
 
+  async function handleInvite(email, details) {
+    const res = await inviteUser(email, details)
+    return res.error || null
+  }
+
   async function handleDelete(userId) {
     const res = await deleteUserAccount(userId)
     if (res.error) return res.error
@@ -320,7 +404,7 @@ export default function Permissions({ userInfo, onLogout }) {
           <div className="text-center py-20 text-sm" style={{ color: 'var(--rust)' }}>{error}</div>
         ) : (
           <>
-            <AddPersonCard partners={partners} implementations={data.implementations} onGrant={handleGrant} />
+            <AddPersonCard partners={partners} implementations={data.implementations} onGrant={handleGrant} onInvite={handleInvite} />
 
             <div className="bg-white rounded-2xl p-6" style={{ border: '1px solid var(--hairline)' }}>
               <input
@@ -345,6 +429,7 @@ export default function Permissions({ userInfo, onLogout }) {
                       onGrant={handleGrant}
                       onRevoke={handleRevoke}
                       onDelete={handleDelete}
+                      onInvite={handleInvite}
                     />
                   ))
                 )}

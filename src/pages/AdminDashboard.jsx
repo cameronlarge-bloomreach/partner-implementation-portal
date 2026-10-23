@@ -571,12 +571,15 @@ function StatusCard({ impl, statusKey }) {
 }
 
 function PendingRow({ profile, implementations, onApprove, onDecline }) {
-  const [choice, setChoice] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
   const sorted = [...implementations].sort((a, b) =>
     (a.partner_name + a.client_name).localeCompare(b.partner_name + b.client_name))
   const partners = Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()
+  // Pre-select the partner they typed at sign-up, when it matches one we know.
+  const knownPartner = partners.find(p => p.toLowerCase() === profile.partner_name?.trim().toLowerCase())
+  const [choice, setChoice] = useState(knownPartner ? `partner:${knownPartner}` : '')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ')
 
   async function approve() {
     if (!choice) { setError('Choose what to grant first.'); return }
@@ -598,8 +601,11 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
       <div className="min-w-48">
-        <div className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{profile.email}</div>
+        <div className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{fullName || profile.email}</div>
+        {fullName && <div className="text-xs" style={{ color: 'var(--ink)' }}>{profile.email}</div>}
         <div className="text-xs" style={{ color: 'var(--muted)' }}>
+          {[profile.partner_name, profile.job_title].filter(Boolean).join(' · ')}
+          {profile.partner_name || profile.job_title ? ' · ' : ''}
           signed up {new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
         </div>
       </div>

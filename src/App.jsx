@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { supabase } from './supabaseClient'
-import { loadUserInfo, signOut } from './api'
+import { loadUserInfo, signOut, consumeInviteLink } from './api'
 import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
 import VerifyMagicLink from './pages/VerifyMagicLink'
@@ -34,7 +34,13 @@ export default function App() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session ?? null))
+    // An invite link has to be exchanged before the first getSession, or the
+    // login screen flashes up while the token is still being verified.
+    consumeInviteLink().then(invite => {
+      if (invite?.ok) navigate('/set-password', { replace: true, state: { invited: true } })
+      if (invite?.error) navigate('/login', { replace: true, state: { inviteError: true } })
+      return supabase.auth.getSession()
+    }).then(({ data }) => setSession(data.session ?? null))
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s ?? null)
       // Arriving via a "Forgot password?" recovery email: send the user

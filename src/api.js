@@ -829,6 +829,39 @@ export async function deleteUserAccount(userId) {
   return { ok: true }
 }
 
+// Creates the account and sends the branded Invite email (admin only, via
+// the invite-user edge function). Grant access with approveSignup first —
+// this doesn't touch grants. details: { firstName, lastName, partnerName, accessLabel }
+export async function inviteUser(email, details = {}) {
+  const { data, error } = await supabase.functions.invoke('invite-user', {
+    body: {
+      email: email.trim().toLowerCase(),
+      ...details,
+      redirectTo: window.location.origin + window.location.pathname,
+    },
+  })
+  if (error) {
+    const detail = await error.context?.json?.().catch(() => null)
+    return fail(detail?.error || error)
+  }
+  if (data?.error) return { error: data.error }
+  return { ok: true }
+}
+
+// Arriving from the Invite email: the template links to
+// <site>?token_hash=…&type=invite (not Supabase's default ConfirmationURL,
+// which returns hash tokens that clash with PKCE + HashRouter). Exchanges
+// it for a session and strips it from the URL. Returns null when the URL
+// isn't an invite link, else { ok } / { error }.
+export async function consumeInviteLink() {
+  const params = new URLSearchParams(window.location.search)
+  const tokenHash = params.get('token_hash')
+  if (!tokenHash || params.get('type') !== 'invite') return null
+  window.history.replaceState(null, '', window.location.pathname + window.location.hash)
+  const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'invite' })
+  return error ? fail(error) : { ok: true }
+}
+
 // ---- Sign-up approval ----
 
 // target: { type: 'admin' } | { type: 'sdc' } | { type: 'viewer' } | { type: 'partner', partnerName } | { type: 'implementation', id }
@@ -873,7 +906,7 @@ export async function declineSignup(profileId) {
 export async function getPendingSignups() {
   try {
     const [profiles, access, admins, sdc, viewers, partnerGrants] = await Promise.all([
-      supabase.from('profiles').select('id, email, created_at').eq('declined', false).order('created_at', { ascending: false }),
+      supabase.from('profiles').select('id, email, created_at, first_name, last_name, partner_name, job_title').eq('declined', false).order('created_at', { ascending: false }),
       supabase.from('access').select('email'),
       supabase.from('admin_emails').select('email'),
       supabase.from('sdc_emails').select('email'),
@@ -894,11 +927,21 @@ export async function getPendingSignups() {
   }
 }
 
-export async function signUp(email, password) {
+// details: { firstName, lastName, partnerName, jobTitle } — stored as user
+// metadata, which a trigger copies onto the profile for the approval list.
+export async function signUp(email, password, details = {}) {
   const { data, error } = await supabase.auth.signUp({
     email: email.trim().toLowerCase(),
     password,
-    options: { emailRedirectTo: window.location.origin + window.location.pathname },
+    options: {
+      emailRedirectTo: window.location.origin + window.location.pathname,
+      data: {
+        first_name: details.firstName?.trim() || null,
+        last_name: details.lastName?.trim() || null,
+        partner_name: details.partnerName?.trim() || null,
+        job_title: details.jobTitle?.trim() || null,
+      },
+    },
   })
   if (error) return fail(error)
   // Supabase returns an obfuscated existing user (no identities) rather than

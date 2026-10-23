@@ -1,16 +1,18 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { updatePassword } from '../api'
 import bloomreachLogo from '../assets/bloomreach-logo.png'
 
 // Reached two ways: directly at #/set-password while signed in, or via the
-// "Forgot password?" recovery email (App.jsx routes here on PASSWORD_RECOVERY).
+// "Forgot password?" recovery email (App.jsx routes here on PASSWORD_RECOVERY),
+// or from an admin's Invite email (state.invited — first visit, so welcome them).
 export default function SetPassword() {
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
   const navigate = useNavigate()
+  const invited = useLocation().state?.invited
 
   async function submit(e) {
     e.preventDefault()
@@ -28,9 +30,13 @@ export default function SetPassword() {
     <div className="min-h-screen flex items-center justify-center p-8" style={{ background: 'var(--paper)' }}>
       <div className="w-full max-w-sm text-center">
         <img src={bloomreachLogo} alt="Bloomreach" className="h-10 mx-auto mb-8" />
-        <h1 className="font-display text-3xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>Set your password</h1>
+        <h1 className="font-display text-3xl font-semibold mb-1" style={{ color: 'var(--ink)' }}>
+          {invited ? 'Welcome to BLIMP' : 'Set your password'}
+        </h1>
         <p className="text-sm mb-8" style={{ color: 'var(--muted)' }}>
-          You’ll be able to sign in with it from now on — email links keep working too
+          {invited
+            ? 'Choose a password to finish setting up your account — you’ll use it to sign in from now on'
+            : 'You’ll be able to sign in with it from now on — email links keep working too'}
         </p>
 
         {error && (
