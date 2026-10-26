@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getAllImplementations, getStepDefinitions, DEFAULT_STEPS } from '../api'
+import { getAllImplementations, getStepDefinitions, listStaffAvatars, DEFAULT_STEPS } from '../api'
 import Navbar from '../components/Navbar'
 import ImplCard from '../components/ImplCard'
 import { SkeletonBar } from '../components/Skeleton'
@@ -33,6 +33,7 @@ export default function PartnerSelect({ userInfo, onLogout }) {
   const [implementations, setImplementations] = useState(null)
   const [error, setError] = useState(null)
   const [steps, setSteps] = useState(DEFAULT_STEPS)
+  const [avatars, setAvatars] = useState({})
   const [tab, setTab] = useState('active')
   const [issue, setIssue] = useState(null) // null | 'overdue' | 'raid'
   const [search, setSearch] = useState('')
@@ -44,6 +45,8 @@ export default function PartnerSelect({ userInfo, onLogout }) {
       .then(data => data?.error ? setError('Failed to load your implementations.') : setImplementations(data || []))
       .catch(() => setError('Failed to load your implementations.'))
     getStepDefinitions().then(setSteps).catch(() => {})
+    // Only CSMs / AMs get rows back (RLS); partners see no team stack anyway.
+    listStaffAvatars().then(setAvatars).catch(() => {})
   }, [])
 
   const byTab = useMemo(() => {
@@ -151,6 +154,7 @@ export default function PartnerSelect({ userInfo, onLogout }) {
                     qaKeys={qaKeys}
                     showPartner={partnerNames.length > 1}
                     showUsage={false}
+                    avatars={avatars}
                     index={i}
                   />
                 ))}

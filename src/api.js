@@ -639,6 +639,14 @@ export async function updateBloomreachOrgLink(_token, implementationId, orgId, o
   return error ? fail(error) : { ok: true }
 }
 
+// Slack profile photos keyed by email (staff_avatars). Readable by internal
+// users only; anyone else (or any error) just gets {} and sees initials.
+export async function listStaffAvatars() {
+  const { data, error } = await supabase.from('staff_avatars').select('email, name, title, photo_url')
+  if (error) return {}
+  return Object.fromEntries((data || []).map(a => [a.email.toLowerCase(), { name: a.name, title: a.title, photoUrl: a.photo_url }]))
+}
+
 // Bloomreach staff with a BLIMP account — suggestions for the account team
 // fields. Admin-only (profiles RLS); everyone else just gets [].
 export async function listBloomreachPeople() {

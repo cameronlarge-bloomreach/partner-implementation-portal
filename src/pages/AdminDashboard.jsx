@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  getAllImplementations, addImplementation, getPendingSignups, getStepDefinitions, DEFAULT_STEPS,
+  getAllImplementations, addImplementation, getPendingSignups, getStepDefinitions, listStaffAvatars, DEFAULT_STEPS,
 } from '../api'
 import Navbar from '../components/Navbar'
 import ImplCard from '../components/ImplCard'
@@ -156,6 +156,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [adding, setAdding] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
   const [steps, setSteps] = useState(DEFAULT_STEPS)
+  const [avatars, setAvatars] = useState({})
   const tpKeys = steps.touchpoints.map(s => s.key)
   const qaKeys = steps.qaSteps.map(s => s.key)
 
@@ -169,6 +170,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
       .finally(() => setLoading(false))
     if (isAdmin) getPendingSignups().then(p => setPendingCount(p.length)).catch(() => {})
     getStepDefinitions().then(setSteps).catch(() => {})
+    listStaffAvatars().then(setAvatars).catch(() => {})
   }, [])
 
   async function handleAdd(form) {
@@ -385,7 +387,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
                     {visible.map((impl, i) => (
-                      <ImplCard key={impl.id} impl={impl} to={`/admin/implementation/${impl.id}`} tpKeys={tpKeys} qaKeys={qaKeys} showPartner={!partner} index={i} />
+                      <ImplCard key={impl.id} impl={impl} to={`/admin/implementation/${impl.id}`} tpKeys={tpKeys} qaKeys={qaKeys} showPartner={!partner} avatars={avatars} index={i} />
                     ))}
                   </div>
                 )}
