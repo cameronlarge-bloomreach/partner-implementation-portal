@@ -161,6 +161,11 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, isViewer, acc
     // account, independent of which SDC member raises a ticket for it.
     psmName: canViewInternal ? (impl.psm_name || '') : undefined,
     psmEmail: canViewInternal ? (impl.psm_email || '') : undefined,
+    // Rest of the internal account team (Customer Success / Account Manager).
+    csmName: canViewInternal ? (impl.csm_name || '') : undefined,
+    csmEmail: canViewInternal ? (impl.csm_email || '') : undefined,
+    amName: canViewInternal ? (impl.am_name || '') : undefined,
+    amEmail: canViewInternal ? (impl.am_email || '') : undefined,
     // Which Loomi Connect instance (loomi-connect vs loomi-connect-eu) the
     // MCP should query for this client. Internal-only, like the org link.
     bloomreachRegion: canViewInternal ? (impl.bloomreach_region || '') : undefined,
@@ -616,9 +621,11 @@ export async function updateBloomreachOrgLink(_token, implementationId, orgId, o
   return error ? fail(error) : { ok: true }
 }
 
-export async function updatePSM(_token, implementationId, name, email) {
+// role: 'psm' | 'csm' | 'am' — Partner Services, Customer Success or Account Manager.
+export async function updateAccountContact(implementationId, role, name, email) {
+  if (!['psm', 'csm', 'am'].includes(role)) return { error: 'Unknown role.' }
   const { error } = await supabase.from('implementations')
-    .update({ psm_name: name || '', psm_email: email || '' })
+    .update({ [`${role}_name`]: name || '', [`${role}_email`]: email || '' })
     .eq('id', implementationId)
   return error ? fail(error) : { ok: true }
 }

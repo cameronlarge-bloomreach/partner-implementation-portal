@@ -5,13 +5,14 @@ import {
   updateImplementationStatus, updateWorkfrontProject,
   deleteImplementation, updateSlackChannel, triggerBauHandover,
   addRaidItem, updateRaidItem, deleteRaidItem, getStepDefinitions,
-  addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink, updatePSM,
+  addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink,
   updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
   CONTRACT_ALLOWANCES, extractContractLimits,
   IMPLEMENTATION_STATUSES,
 } from '../api'
 import Navbar from '../components/Navbar'
 import StepsManager from '../components/StepsManager'
+import AccountTeam from '../components/AccountTeam'
 import ImplementationDocuments from '../components/ImplementationDocuments'
 import ProgressRing from '../components/ProgressRing'
 import QAWorkbookModal from '../components/QAWorkbookModal'
@@ -43,13 +44,6 @@ const QA_STEPS = [
   { key: 'qa_peer_review_4', label: 'Use Cases Data Check & Debugging' },
   { key: 'qa_peer_review_5', label: 'Data Mapping' },
   { key: 'qa_peer_review_6', label: 'Expiration & Data Cleanliness' },
-]
-
-// Partner Services Manager — internal account owner. Fixed to the two PSMs
-// today; add another { name, email } here if a third one comes on board.
-const PSM_OPTIONS = [
-  { name: 'Cameron Large', email: 'cameron.large@bloomreach.com' },
-  { name: 'James Tewson', email: 'james.tewson@bloomreach.com' },
 ]
 
 const RAID_TYPES = ['Risk', 'Action', 'Issue', 'Dependency']
@@ -350,9 +344,6 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   // Internal tab (admin only)
   const [editingOrgLink, setEditingOrgLink] = useState(false)
   const [orgLinkInput, setOrgLinkInput] = useState({ orgId: '', orgName: '' })
-  const [editingPSM, setEditingPSM] = useState(false)
-  const [psmInput, setPsmInput] = useState({ name: '', email: '' })
-  const [savingPSM, setSavingPSM] = useState(false)
   const [savingOrgLink, setSavingOrgLink] = useState(false)
   const [savingPricing, setSavingPricing] = useState(false)
   const [savingRegion, setSavingRegion] = useState(false)
@@ -565,17 +556,6 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
       setEditingOrgLink(false)
     } catch { /* silent */ }
     setSavingOrgLink(false)
-  }
-
-  async function handleSavePSM(e) {
-    e.preventDefault()
-    setSavingPSM(true)
-    try {
-      await updatePSM(credential, id, psmInput.name.trim(), psmInput.email.trim())
-      patchImpl({ psmName: psmInput.name.trim(), psmEmail: psmInput.email.trim() })
-      setEditingPSM(false)
-    } catch { /* silent */ }
-    setSavingPSM(false)
   }
 
   async function handleAddNote(e) {
@@ -1010,41 +990,11 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               </Card>
 
               <Card>
-                <div className="flex items-center justify-between mb-2.5">
-                  <SectionTitle>Partner Services Manager</SectionTitle>
-                  {isAdmin && !editingPSM && (
-                    <button onClick={() => { setPsmInput({ name: impl.psmName || '', email: impl.psmEmail || '' }); setEditingPSM(true) }}
-                      className="text-xs font-medium -mt-3.5" style={{ color: 'var(--arctic)' }}>
-                      {impl.psmName ? 'Edit' : 'Set owner'}
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs -mt-1.5 mb-2.5" style={{ color: 'var(--muted)' }}>
-                  Whoever internally owns this account — used to credit and notify the right person when SDC raises a ticket, regardless of who actually raises it.
+                <SectionTitle>Account team</SectionTitle>
+                <p className="text-xs -mt-2 mb-3.5" style={{ color: 'var(--muted)' }}>
+                  Who looks after this account internally. The PSM is credited and notified on SDC tickets raised from here.
                 </p>
-
-                {editingPSM ? (
-                  <form onSubmit={handleSavePSM} className="flex items-center gap-2">
-                    <select value={psmInput.email} onChange={e => {
-                      const chosen = PSM_OPTIONS.find(p => p.email === e.target.value)
-                      setPsmInput(chosen ? { name: chosen.name, email: chosen.email } : { name: '', email: '' })
-                    }} className="rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" style={{ border: '1px solid var(--hairline)' }}>
-                      <option value="">Select owner…</option>
-                      {PSM_OPTIONS.map(p => <option key={p.email} value={p.email}>{p.name}</option>)}
-                    </select>
-                    <button type="submit" disabled={savingPSM} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
-                      {savingPSM ? 'Saving…' : 'Save'}
-                    </button>
-                    <button type="button" onClick={() => setEditingPSM(false)} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
-                  </form>
-                ) : impl.psmName ? (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[13.5px]" style={{ color: 'var(--ink)' }}>{impl.psmName}</span>
-                    {impl.psmEmail && <span className="font-mono text-[11.5px]" style={{ color: 'var(--muted)' }}>{impl.psmEmail}</span>}
-                  </div>
-                ) : (
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>Not set — tickets raised from here will credit whoever raises them, nothing more.</p>
-                )}
+                <AccountTeam impl={impl} isAdmin={isAdmin} onChange={patchImpl} />
               </Card>
 
               <Card>
