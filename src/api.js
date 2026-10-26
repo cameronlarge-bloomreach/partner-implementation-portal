@@ -869,25 +869,17 @@ export async function consumeInviteLink() {
 // signed up or not — the shape of "grant X to this email" is identical.
 export async function approveSignup(email, target) {
   const clean = email.trim().toLowerCase()
-  if (target.type === 'admin') {
-    const { error } = await supabase.from('admin_emails').insert({ email: clean })
-    return error ? fail(error) : { ok: true }
-  }
-  if (target.type === 'sdc') {
-    const { error } = await supabase.from('sdc_emails').insert({ email: clean })
-    return error ? fail(error) : { ok: true }
-  }
-  if (target.type === 'viewer') {
-    const { error } = await supabase.from('viewer_emails').insert({ email: clean })
-    return error ? fail(error) : { ok: true }
-  }
-  if (target.type === 'partner') {
-    const { error } = await supabase.from('partner_access')
-      .upsert({ email: clean, partner_name: target.partnerName })
-    return error ? fail(error) : { ok: true }
-  }
-  const { error } = await supabase.from('access')
-    .upsert({ email: clean, implementation_id: target.id })
+  // Grant tables have insert/delete RLS policies but no update policy, so a
+  // plain upsert fails on an existing row ("violates row-level security
+  // policy (USING expression)"). ignoreDuplicates makes it ON CONFLICT DO
+  // NOTHING: re-granting something they already have is a harmless no-op.
+  const grant = (table, row) =>
+    supabase.from(table).upsert(row, { ignoreDuplicates: true })
+  const { error } = target.type === 'admin' ? await grant('admin_emails', { email: clean })
+    : target.type === 'sdc' ? await grant('sdc_emails', { email: clean })
+    : target.type === 'viewer' ? await grant('viewer_emails', { email: clean })
+    : target.type === 'partner' ? await grant('partner_access', { email: clean, partner_name: target.partnerName })
+    : await grant('access', { email: clean, implementation_id: target.id })
   return error ? fail(error) : { ok: true }
 }
 
