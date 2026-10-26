@@ -79,6 +79,8 @@ function StatusPill({ person }) {
 function AccessChip({ children, tone = 'partner', onRemove, busy }) {
   const style = tone === 'role'
     ? { background: 'var(--ink)', color: '#fff', border: '1px solid var(--ink)' }
+    : tone === 'team'
+    ? { background: '#dff1f9', color: '#015f86', border: '1px solid #b9e0f0' }
     : { background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--hairline)' }
   return (
     <span className={`inline-flex items-center gap-1 text-xs rounded-full py-1 ${onRemove ? 'pl-2.5 pr-1' : 'px-2.5'}`} style={style}>
@@ -256,8 +258,16 @@ function ManageModal({ person, partners, isSelf, onGrant, onRevoke, onInvite, on
                 {p}
               </AccessChip>
             ))}
+            {person.teamAccounts.map(t => (
+              <AccessChip key={`${t.role}:${t.client}`} tone="team">{t.role} · {t.client}</AccessChip>
+            ))}
             {!person.hasAnyAccess && <span className="text-[13px]" style={{ color: 'var(--muted)' }}>No access yet — they’ll see a waiting screen.</span>}
           </div>
+          {person.teamAccounts.length > 0 && (
+            <p className="text-xs -mt-1 mb-3" style={{ color: 'var(--muted)' }}>
+              Account team access is read-only and follows the Account team card on each implementation — change it there.
+            </p>
+          )}
           <div className="flex gap-2 mb-6">
             <div className="flex-1"><AccessSelect partners={partners} value={choice} onChange={setChoice} exclude={held} placeholder="Add access…" /></div>
             <button
@@ -346,6 +356,13 @@ function PersonCard({ person, index, isSelf, showPartners, partners, onManage, o
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
           {person.roles.map(r => <AccessChip key={r} tone="role">{ROLE_LABEL[r]}</AccessChip>)}
           {showPartners && person.partners.map(p => <AccessChip key={p}>{p}</AccessChip>)}
+          {person.teamAccounts.length > 0 && (
+            <AccessChip tone="team">
+              {person.teamAccounts.length === 1
+                ? `${person.teamAccounts[0].role} · ${person.teamAccounts[0].client}`
+                : `Account team · ${person.teamAccounts.length} accounts`}
+            </AccessChip>
+          )}
           {!person.hasAnyAccess && person.typedPartner && !suggested && (
             <span className="text-xs" style={{ color: 'var(--muted)' }}>Says they’re with <strong style={{ color: 'var(--ink)' }}>{person.typedPartner}</strong></span>
           )}
@@ -442,10 +459,20 @@ export default function Permissions({ userInfo, onLogout }) {
   const people = useMemo(() => {
     if (!data) return []
     const profileByEmail = Object.fromEntries(data.profiles.map(p => [p.email, p]))
+    // CSM / Account Manager assignments are access too (read-only, set on
+    // each implementation's Account team card — account-team-access.sql).
+    const teamByEmail = {}
+    for (const i of data.implementations) {
+      for (const [col, role] of [['csm_email', 'CSM'], ['am_email', 'AM']]) {
+        const e = (i[col] || '').toLowerCase()
+        if (e) (teamByEmail[e] ||= []).push({ role, client: i.client_name, partner: i.partner_name })
+      }
+    }
     const emails = new Set([
       ...data.profiles.map(p => p.email),
       ...data.admins, ...data.sdc, ...data.viewers,
       ...data.partnerGrants.map(g => g.email),
+      ...Object.keys(teamByEmail),
     ])
     return Array.from(emails).filter(e => e && e.includes('@')).map(email => {
       const profile = profileByEmail[email]
@@ -466,13 +493,14 @@ export default function Permissions({ userInfo, onLogout }) {
         createdAt: profile?.created_at || null,
         roles,
         partners: partnerList,
-        hasAnyAccess: roles.length > 0 || partnerList.length > 0,
+        teamAccounts: teamByEmail[email] || [],
+        hasAnyAccess: roles.length > 0 || partnerList.length > 0 || !!teamByEmail[email],
       }
     }).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email))
   }, [data])
 
   const awaiting = people.filter(p => p.hasAccount && !p.hasAnyAccess && !p.declined)
-  const team = people.filter(p => p.roles.length > 0)
+  const team = people.filter(p => p.roles.length > 0 || p.teamAccounts.length > 0)
   const peopleByPartner = useMemo(() => {
     const map = {}
     for (const p of people) for (const name of p.partners) (map[name] ||= []).push(p)
@@ -496,7 +524,7 @@ export default function Permissions({ userInfo, onLogout }) {
     : group === 'awaiting' ? 'Awaiting access'
     : groupPartner
   const subtitle = group === 'all' ? `${people.length} people with an account or access`
-    : group === 'team' ? 'Admins, SDCs and viewers — they see every partner'
+    : group === 'team' ? 'Admins, SDCs and viewers see every partner; CSMs and AMs see the accounts they’re assigned to'
     : group === 'awaiting' ? 'Signed up, but not linked to a partner yet'
     : `${implCountByPartner[groupPartner] || 0} implementation${implCountByPartner[groupPartner] === 1 ? '' : 's'} · ${inGroup.length} ${inGroup.length === 1 ? 'person' : 'people'} with access`
 
@@ -521,7 +549,10 @@ export default function Permissions({ userInfo, onLogout }) {
     const partnerName = person.partners[0]
     const res = await inviteUser(person.email, {
       firstName: person.firstName, lastName: person.lastName, partnerName,
-      accessLabel: person.roles[0] ? accessLabel({ type: person.roles[0] }) : partnerName ? accessLabel({ type: 'partner', partnerName }) : null,
+      accessLabel: person.roles[0] ? accessLabel({ type: person.roles[0] })
+        : partnerName ? accessLabel({ type: 'partner', partnerName })
+        : person.teamAccounts.length ? person.teamAccounts.map(t => t.client).join(', ')
+        : null,
     })
     return res.error || null
   }

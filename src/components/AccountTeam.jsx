@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { updateAccountContact, listBloomreachPeople } from '../api'
+import { updateAccountContact, listBloomreachPeople, inviteUser } from '../api'
 
 // Internal account team for an implementation: Partner Services Manager,
 // Customer Success Manager and Account Manager. Internal-only (the API
@@ -35,8 +35,9 @@ function initials(name) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
-function ContactRow({ role, name, email, isAdmin, people, onSave }) {
+function ContactRow({ role, name, email, isAdmin, people, clientName, onSave }) {
   const [editing, setEditing] = useState(false)
+  const [invite, setInvite] = useState(null) // null | 'sending' | 'sent'
   const [input, setInput] = useState({ name: '', email: '' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -58,6 +59,22 @@ function ContactRow({ role, name, email, isAdmin, people, onSave }) {
     if (err) setError(err)
     else setEditing(false)
   }
+
+  // Assignment is their access (account-team-access.sql), so the invite
+  // only has to create the account — no grant needed first.
+  async function sendInvite() {
+    setInvite('sending')
+    setError(null)
+    const [firstName, ...rest] = (name || nameFromEmail(email)).split(' ')
+    const res = await inviteUser(email, {
+      firstName, lastName: rest.join(' '),
+      accessLabel: `${clientName} (as ${role.label})`,
+    })
+    if (res.error) { setInvite(null); setError(res.error) }
+    else setInvite('sent')
+  }
+
+  const notOnBlimp = isAdmin && role.key !== 'psm' && email && !people.some(p => p.email === email)
 
   return (
     <div className="py-3 first:pt-0 last:pb-0">
@@ -131,7 +148,7 @@ function ContactRow({ role, name, email, isAdmin, people, onSave }) {
             <div className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>
               {name || nameFromEmail(email)}
               {/* Only admins can list profiles, so only they get the badge */}
-              {isAdmin && role.key !== 'psm' && email && !people.some(p => p.email === email) && (
+              {notOnBlimp && (
                 <span className="ml-2 text-[10.5px] font-medium px-1.5 py-0.5 rounded-full align-middle" style={{ background: 'var(--paper)', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
                   Not on BLIMP yet
                 </span>
@@ -139,10 +156,25 @@ function ContactRow({ role, name, email, isAdmin, people, onSave }) {
             </div>
             {email && <a href={`mailto:${email}`} className="font-mono text-[11.5px] truncate block hover:underline" style={{ color: 'var(--muted)' }}>{email}</a>}
           </div>
+          {notOnBlimp && (
+            invite === 'sent'
+              ? <span className="ml-auto text-xs shrink-0" style={{ color: 'var(--moss)' }}>Invite sent ✓</span>
+              : (
+                <button
+                  onClick={sendInvite}
+                  disabled={invite === 'sending'}
+                  className="ml-auto shrink-0 disabled:opacity-50 text-xs font-medium px-2.5 py-1 rounded-lg"
+                  style={{ background: 'var(--ink)', color: '#fff' }}
+                >
+                  {invite === 'sending' ? 'Sending…' : 'Invite'}
+                </button>
+              )
+          )}
         </div>
       ) : (
         <p className="text-xs" style={{ color: 'var(--muted)' }}>Not set</p>
       )}
+      {!editing && error && <p className="text-xs mt-1.5" style={{ color: 'var(--rust)' }}>{error}</p>}
     </div>
   )
 }
@@ -171,6 +203,7 @@ export default function AccountTeam({ impl, isAdmin, onChange }) {
           email={impl[`${role.key}Email`]}
           isAdmin={isAdmin}
           people={people}
+          clientName={impl.client_name}
           onSave={save}
         />
       ))}

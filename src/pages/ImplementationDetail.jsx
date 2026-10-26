@@ -624,7 +624,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
-      <Navbar userInfo={userInfo} onLogout={onLogout} title={isAdmin ? 'Admin — Partner Portal' : isSDC ? 'SDC — Partner Portal' : isViewer ? 'Viewer — Partner Portal' : 'Partner Portal'} />
+      <Navbar userInfo={userInfo} onLogout={onLogout} title={isAdmin ? 'Admin — Partner Portal' : isSDC ? 'SDC — Partner Portal' : impl.isAccountTeam ? 'Account team — Partner Portal' : isViewer ? 'Viewer — Partner Portal' : 'Partner Portal'} />
 
       <div className="max-w-[1120px] mx-auto px-7 py-7">
         {backHref && <Link to={backHref} className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>{backLabel}</Link>}

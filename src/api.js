@@ -205,6 +205,18 @@ async function callerIsViewer() {
   return data === true
 }
 
+// A CSM / Account Manager on an implementation (account-team-access.sql)
+// gets read-only access to it, so the app treats them exactly like a
+// Viewer for that implementation — never for admins or SDC.
+async function callerEmail() {
+  const { data } = await supabase.auth.getSession()
+  return (data.session?.user?.email || '').toLowerCase()
+}
+
+function isAccountTeam(impl, email) {
+  return !!email && [impl.csm_email, impl.am_email].some(e => (e || '').toLowerCase() === email)
+}
+
 // ---- Reads ----
 
 export async function getMyImplementations() {
@@ -223,8 +235,7 @@ export async function getMyImplementations() {
 
 export async function getImplementation(_token, implementationId) {
   try {
-    const [isAdmin, isSDC, isViewer] = await Promise.all([callerIsAdmin(), callerIsSDC(), callerIsViewer()])
-    const canViewInternal = isAdmin || isSDC || isViewer
+    const [isAdmin, isSDC, isViewer, email] = await Promise.all([callerIsAdmin(), callerIsSDC(), callerIsViewer(), callerEmail()])
     const [impl, tps, raid, scope, docs, access, notes, scenarios, metrics, hours] = await Promise.all([
       supabase.from('implementations').select('*').eq('id', implementationId).maybeSingle(),
       supabase.from('touch_points').select('key, status').eq('implementation_id', implementationId),
@@ -234,36 +245,37 @@ export async function getImplementation(_token, implementationId) {
       isViewer ? Promise.resolve({ data: [] }) : supabase.from('scope_items').select('*').eq('implementation_id', implementationId).order('category').order('position'),
       isViewer ? Promise.resolve({ data: [] }) : supabase.from('documents').select('*').eq('implementation_id', implementationId).order('uploaded_at', { ascending: false }),
       isViewer ? Promise.resolve({ data: [] }) : supabase.from('access').select('email').eq('implementation_id', implementationId),
-      canViewInternal
-        ? supabase.from('meeting_notes').select('*').eq('implementation_id', implementationId).order('meeting_date', { ascending: false })
-        : Promise.resolve({ data: [] }),
-      canViewInternal
-        ? supabase.from('scenario_sync').select('*').eq('implementation_id', implementationId).order('name')
-        : Promise.resolve({ data: [] }),
-      canViewInternal
-        ? supabase.from('usage_metrics').select('*').eq('implementation_id', implementationId)
-        : Promise.resolve({ data: [] }),
+      // Internal-only tables: RLS returns nothing to partners, and
+      // buildImplResponse drops them for anyone without internal access.
+      supabase.from('meeting_notes').select('*').eq('implementation_id', implementationId).order('meeting_date', { ascending: false }),
+      supabase.from('scenario_sync').select('*').eq('implementation_id', implementationId).order('name'),
+      supabase.from('usage_metrics').select('*').eq('implementation_id', implementationId),
       supabase.from('workfront_hours').select('*').eq('implementation_id', implementationId),
     ])
     const firstError = [impl, tps, raid, scope, docs, access, notes, scenarios, hours].find(r => r.error)
     if (firstError) throw firstError.error
     if (!impl.data) return { error: 'not_found' }
-    const partnerGrants = isViewer ? { data: [] } : await supabase.from('partner_access')
+    const asTeam = !isAdmin && !isSDC && !isViewer && isAccountTeam(impl.data, email)
+    const readOnly = isViewer || asTeam
+    const partnerGrants = readOnly ? { data: [] } : await supabase.from('partner_access')
       .select('email').ilike('partner_name', impl.data.partner_name)
     const emails = [
       ...access.data.map(a => a.email),
       ...(partnerGrants.data || []).map(g => `${g.email} (partner-wide)`),
     ]
-    return buildImplResponse(
-      impl.data, tps.data, raid.data, isAdmin, isSDC, isViewer,
-      emails, notes.data, scenarios.data, scope.data, docs.data, metrics.data, hours.data,
-    )
+    return {
+      ...buildImplResponse(
+        impl.data, tps.data, raid.data, isAdmin, isSDC, readOnly,
+        emails, notes.data, scenarios.data, scope.data, docs.data, metrics.data, hours.data,
+      ),
+      isAccountTeam: asTeam,
+    }
   } catch (e) { return fail(e) }
 }
 
 export async function getAllImplementations() {
   try {
-    const [isAdmin, isSDC, isViewer] = await Promise.all([callerIsAdmin(), callerIsSDC(), callerIsViewer()])
+    const [isAdmin, isSDC, isViewer, email] = await Promise.all([callerIsAdmin(), callerIsSDC(), callerIsViewer(), callerEmail()])
     const [impls, tps, raid, scope, docs, access, notes, scenarios, metrics, partnerGrants, hours] = await Promise.all([
       supabase.from('implementations').select('*').order('partner_name'),
       supabase.from('touch_points').select('implementation_id, key, status'),
@@ -297,14 +309,20 @@ export async function getAllImplementations() {
     const scenarioMap = byImpl(scenarios.data)
     const metricMap = byImpl(metrics.data)
     const hoursMap = byImpl(hours.data)
-    return impls.data.map(impl => buildImplResponse(
-      impl, tpMap[impl.id] || [], raidMap[impl.id] || [], isAdmin, isSDC, isViewer,
-      [
-        ...(accessMap[impl.id] || []).map(a => a.email),
-        ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
-      ],
-      noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [], docMap[impl.id] || [], metricMap[impl.id] || [], hoursMap[impl.id] || [],
-    ))
+    return impls.data.map(impl => {
+      const asTeam = !isAdmin && !isSDC && !isViewer && isAccountTeam(impl, email)
+      return {
+        ...buildImplResponse(
+          impl, tpMap[impl.id] || [], raidMap[impl.id] || [], isAdmin, isSDC, isViewer || asTeam,
+          [
+            ...(accessMap[impl.id] || []).map(a => a.email),
+            ...(grantsByPartner[(impl.partner_name || '').toLowerCase()] || []),
+          ],
+          noteMap[impl.id] || [], scenarioMap[impl.id] || [], scopeMap[impl.id] || [], docMap[impl.id] || [], metricMap[impl.id] || [], hoursMap[impl.id] || [],
+        ),
+        isAccountTeam: asTeam,
+      }
+    })
   } catch (e) { return fail(e) }
 }
 
@@ -800,7 +818,7 @@ export async function getAllAccess() {
       supabase.from('sdc_emails').select('email'),
       supabase.from('viewer_emails').select('email'),
       supabase.from('partner_access').select('email, partner_name'),
-      supabase.from('implementations').select('id, partner_name, client_name').order('partner_name'),
+      supabase.from('implementations').select('id, partner_name, client_name, csm_email, am_email').order('partner_name'),
     ])
     const firstError = [profiles, access, admins, sdc, viewers, partnerGrants, impls].find(r => r.error)
     if (firstError) throw firstError.error
