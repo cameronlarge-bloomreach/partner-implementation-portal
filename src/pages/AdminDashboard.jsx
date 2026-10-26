@@ -5,7 +5,7 @@ import {
 } from '../api'
 import Navbar from '../components/Navbar'
 import ImplCard from '../components/ImplCard'
-import { openRaidCount, isOverdue, usageIssue, viewOf } from '../implStatus'
+import { openRaidCount, isOverdue, usageIssue, viewOf, nameFromEmail, teamEmails } from '../implStatus'
 import ModalShell from '../components/ModalShell'
 import { SkeletonBar } from '../components/Skeleton'
 
@@ -25,7 +25,7 @@ const VIEWS = {
 
 // ---- Sidebar ----
 
-function NavItem({ active, onClick, label, count, tone }) {
+function NavItem({ active, onClick, label, count, tone, icon }) {
   const badge = active ? { background: 'rgba(255,255,255,0.2)' }
     : tone === 'rust' ? { background: 'var(--rust-bg)', color: 'var(--rust)' }
     : { background: 'var(--paper)', color: 'var(--muted)' }
@@ -36,9 +36,25 @@ function NavItem({ active, onClick, label, count, tone }) {
       style={active ? { background: 'var(--ink)', color: '#fff' } : { color: 'var(--ink)' }}
       aria-current={active ? 'true' : undefined}
     >
-      <span className="truncate">{label}</span>
+      <span className="flex items-center gap-2 min-w-0">
+        {icon}
+        <span className="truncate">{label}</span>
+      </span>
       <span className="text-[11px] font-semibold rounded-full px-1.5 min-w-5 text-center" style={badge}>{count}</span>
     </button>
+  )
+}
+
+const NOBODY = '__nobody'
+
+function MiniAvatar({ name, photo }) {
+  return (
+    <span className="inline-flex items-center justify-center w-5 h-5 rounded-full overflow-hidden text-[8.5px] font-semibold shrink-0"
+      style={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--hairline)' }} aria-hidden="true">
+      {photo
+        ? <img src={photo} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+        : name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+    </span>
   )
 }
 
@@ -152,6 +168,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   const [view, setView] = useState('active') // keyof VIEWS
   const [issue, setIssue] = useState('all') // within 'attention': 'all' | keyof ISSUES
   const [partner, setPartner] = useState(null)
+  const [person, setPerson] = useState(null) // team email | NOBODY | null
   const [search, setSearch] = useState('')
   const [adding, setAdding] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
@@ -214,14 +231,37 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
     .filter(i => view !== 'attention' || issue === 'all' || ISSUES[issue].test(i))
     .filter(i => !q || [i.client_name, i.partner_name].some(v => v?.toLowerCase().includes(q)))
 
-  // Partner list reflects the current view, so counts always add up.
+  const matchesPartner = i => !partner || i.partner_name === partner
+  const matchesPerson = i => !person || (person === NOBODY ? teamEmails(i).length === 0 : teamEmails(i).includes(person))
+
+  // Partner and person lists reflect the current view and each other's
+  // filter, so the counts always add up to what's shown.
   const partnerCounts = {}
-  for (const i of inView) if (i.partner_name) partnerCounts[i.partner_name] = (partnerCounts[i.partner_name] || 0) + 1
+  for (const i of inView.filter(matchesPerson)) if (i.partner_name) partnerCounts[i.partner_name] = (partnerCounts[i.partner_name] || 0) + 1
   const partnerNames = Object.keys(partnerCounts).sort((a, b) => a.localeCompare(b))
   const allPartners = Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()
 
+  const selfEmail = (userInfo?.email || '').toLowerCase()
+  const personCounts = {}
+  const personNames = {}
+  let nobodyCount = 0
+  for (const i of inView.filter(matchesPartner)) {
+    const emails = teamEmails(i)
+    if (!emails.length) nobodyCount++
+    for (const e of emails) {
+      personCounts[e] = (personCounts[e] || 0) + 1
+      personNames[e] ||= avatars[e]?.name || ['psm', 'csm', 'am'].map(k => (i[`${k}Email`] || '').toLowerCase() === e && i[`${k}Name`]).find(Boolean) || nameFromEmail(e)
+    }
+  }
+  // Keep the selected person listed even when the view has none of theirs.
+  if (person && person !== NOBODY && !personCounts[person]) { personCounts[person] = 0; personNames[person] = avatars[person]?.name || nameFromEmail(person) }
+  const personEmails = Object.keys(personCounts)
+    .sort((a, b) => (b === selfEmail) - (a === selfEmail) || personNames[a].localeCompare(personNames[b]))
+  const personLabel = e => e === NOBODY ? 'Nobody assigned' : e === selfEmail ? 'You' : personNames[e] || nameFromEmail(e)
+
   const visible = inView
-    .filter(i => !partner || i.partner_name === partner)
+    .filter(matchesPartner)
+    .filter(matchesPerson)
     .sort((a, b) => (a.partner_name + a.client_name).localeCompare(b.partner_name + b.client_name))
 
   function pickView(v) {
@@ -230,9 +270,12 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
     setPartner(null)
   }
 
-  const title = partner ? `${partner}` : VIEWS[view].label
-  const subtitle = partner
-    ? `${visible.length} ${VIEWS[view].label.toLowerCase()} implementation${visible.length === 1 ? '' : 's'}`
+  const title = partner || (person ? (person === NOBODY ? 'Nobody assigned' : person === selfEmail ? 'Your accounts' : personLabel(person)) : VIEWS[view].label)
+  const subtitle = partner || person
+    ? [
+        `${visible.length} ${VIEWS[view].label.toLowerCase()} implementation${visible.length === 1 ? '' : 's'}`,
+        partner && person && (person === NOBODY ? 'with nobody assigned' : `assigned to ${personLabel(person) === 'You' ? 'you' : personLabel(person)}`),
+      ].filter(Boolean).join(' ')
     : VIEWS[view].subtitle
 
   return (
@@ -322,6 +365,14 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                     <option value="">All partners</option>
                     {partnerNames.map(p => <option key={p} value={p}>{p} ({partnerCounts[p]})</option>)}
                   </select>
+                  {(personEmails.length > 0 || nobodyCount > 0) && (
+                    <select value={person || ''} onChange={e => setPerson(e.target.value || null)} aria-label="Assigned to"
+                      className="col-span-2 rounded-lg px-3 py-2 text-sm focus:outline-none bg-white" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
+                      <option value="">Anyone assigned</option>
+                      {personEmails.map(e => <option key={e} value={e}>{personLabel(e)} ({personCounts[e]})</option>)}
+                      {nobodyCount > 0 && <option value={NOBODY}>Nobody assigned ({nobodyCount})</option>}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -330,10 +381,10 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients or partners…"
                   className="w-full rounded-lg px-3 py-2 text-[13px] focus:outline-none mb-2" style={{ border: '1px solid var(--hairline)', background: 'var(--paper)' }} />
                 <nav className="space-y-0.5">
-                  <NavItem active={view === 'active' && !partner} onClick={() => pickView('active')} label="Active" count={byView.active.length} />
-                  <NavItem active={view === 'attention' && !partner} onClick={() => pickView('attention')} label="Needs attention" count={byView.attention.length} tone={byView.attention.length ? 'rust' : undefined} />
-                  <NavItem active={view === 'pending' && !partner} onClick={() => pickView('pending')} label="Pending" count={byView.pending.length} />
-                  <NavItem active={view === 'closed' && !partner} onClick={() => pickView('closed')} label="Closed" count={byView.closed.length} />
+                  <NavItem active={view === 'active'} onClick={() => pickView('active')} label="Active" count={byView.active.length} />
+                  <NavItem active={view === 'attention'} onClick={() => pickView('attention')} label="Needs attention" count={byView.attention.length} tone={byView.attention.length ? 'rust' : undefined} />
+                  <NavItem active={view === 'pending'} onClick={() => pickView('pending')} label="Pending" count={byView.pending.length} />
+                  <NavItem active={view === 'closed'} onClick={() => pickView('closed')} label="Closed" count={byView.closed.length} />
                 </nav>
                 <div className="text-[11px] font-semibold uppercase tracking-widest px-3 mt-4 mb-1.5" style={{ color: 'var(--muted)' }}>
                   Partners · {VIEWS[view].label.toLowerCase()}
@@ -344,6 +395,28 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                   ))}
                   {partnerNames.length === 0 && <p className="text-xs px-3 py-1" style={{ color: 'var(--muted)' }}>None in this view.</p>}
                 </nav>
+                {(personEmails.length > 0 || nobodyCount > 0) && (
+                  <>
+                    <div className="text-[11px] font-semibold uppercase tracking-widest px-3 mt-4 mb-1.5" style={{ color: 'var(--muted)' }}>
+                      Assigned to
+                    </div>
+                    <nav className="space-y-0.5">
+                      {personEmails.map(e => (
+                        <NavItem
+                          key={e}
+                          active={person === e}
+                          onClick={() => setPerson(person === e ? null : e)}
+                          label={personLabel(e)}
+                          count={personCounts[e]}
+                          icon={<MiniAvatar name={personNames[e]} photo={avatars[e]?.photoUrl} />}
+                        />
+                      ))}
+                      {nobodyCount > 0 && (
+                        <NavItem active={person === NOBODY} onClick={() => setPerson(person === NOBODY ? null : NOBODY)} label="Nobody assigned" count={nobodyCount} />
+                      )}
+                    </nav>
+                  </>
+                )}
               </aside>
 
               {/* Main */}
@@ -353,9 +426,9 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                     <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--ink)' }}>{title}</h2>
                     <p className="text-[13px]" style={{ color: 'var(--muted)' }}>{subtitle}</p>
                   </div>
-                  {partner && (
-                    <button onClick={() => setPartner(null)} className="no-print text-[13px] font-medium hover:underline" style={{ color: 'var(--arctic-dark)' }}>
-                      ← All partners
+                  {(partner || person) && (
+                    <button onClick={() => { setPartner(null); setPerson(null) }} className="no-print text-[13px] font-medium hover:underline" style={{ color: 'var(--arctic-dark)' }}>
+                      Clear filters
                     </button>
                   )}
                 </div>

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { IMPLEMENTATION_STATUSES } from '../api'
-import { stepsDone, openRaidCount, daysUntil, usageIssue, viewOf } from '../implStatus'
+import { stepsDone, openRaidCount, daysUntil, usageIssue, viewOf, nameFromEmail } from '../implStatus'
 import RolloutRail from './RolloutRail'
 
 // Implementation card, shared by the admin dashboard and the partner home
@@ -32,11 +32,6 @@ function DueLabel({ impl }) {
 // (Slack profile pictures); anyone without one gets their initials. The
 // team fields are internal-only, so partners never see this.
 const TEAM_ROLES = [['psm', 'PSM'], ['csm', 'CSM'], ['am', 'AM']]
-
-function nameFromEmail(email) {
-  return (email || '').split('@')[0].split(/[._-]+/).filter(Boolean)
-    .map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
-}
 
 function TeamStack({ impl, avatars }) {
   // One bubble per person, even if they hold more than one role here.

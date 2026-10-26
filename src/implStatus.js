@@ -47,3 +47,16 @@ export function usageIssue(impl) {
 export function viewOf(impl) {
   return impl.status === 'pending' ? 'pending' : impl.status === 'complete' ? 'closed' : 'active'
 }
+
+// priya.shah@bloomreach.com -> "Priya Shah"
+export function nameFromEmail(email) {
+  return (email || '').split('@')[0].split(/[._-]+/).filter(Boolean)
+    .map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
+}
+
+// Distinct lowercased PSM / CSM / AM emails on an implementation. Empty for
+// partners — the team fields are internal-only.
+export function teamEmails(impl) {
+  return Array.from(new Set(['psm', 'csm', 'am']
+    .map(k => (impl[`${k}Email`] || '').toLowerCase()).filter(Boolean)))
+}
