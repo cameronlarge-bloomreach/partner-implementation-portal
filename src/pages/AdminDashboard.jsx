@@ -1,35 +1,31 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  getAllImplementations, addImplementation, getPendingSignups, approveSignup,
-  declineSignup, getStepDefinitions, DEFAULT_STEPS, IMPLEMENTATION_STATUSES, USAGE_METERS,
+  getAllImplementations, addImplementation, getPendingSignups,
+  getStepDefinitions, DEFAULT_STEPS, IMPLEMENTATION_STATUSES, USAGE_METERS,
 } from '../api'
 import Navbar from '../components/Navbar'
 import RolloutRail from '../components/RolloutRail'
-import Collapse from '../components/Collapse'
-import { DashboardSkeleton } from '../components/Skeleton'
+import ModalShell from '../components/ModalShell'
+import { SkeletonBar } from '../components/Skeleton'
 
-function getProgress(impl, tpKeys) {
-  if (!tpKeys.length) return 0
-  const tp = impl.touchPoints || {}
-  const complete = tpKeys.filter(k => tp[k] === 'complete').length
-  return Math.round((complete / tpKeys.length) * 100)
-}
-
-function getQAProgress(impl, qaKeys) {
-  if (!qaKeys.length) return 0
-  const qa = impl.qaSteps || {}
-  const complete = qaKeys.filter(k => qa[k] === 'complete').length
-  return Math.round((complete / qaKeys.length) * 100)
+function stepsDone(map, keys) {
+  return keys.filter(k => (map || {})[k] === 'complete').length
 }
 
 function openRaidCount(impl) {
   return (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
 }
 
+function daysUntil(date) {
+  if (!date) return null
+  const ms = new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)
+  return Math.round(ms / 86400000)
+}
+
 function isOverdue(impl) {
-  if (!impl.planned_completion_date) return false
-  return new Date(impl.planned_completion_date) < new Date()
+  const d = daysUntil(impl.planned_completion_date)
+  return d != null && d < 0
 }
 
 // Contracted billing meters are manual entry (no API source) — flag when
@@ -54,34 +50,234 @@ function usageIssue(impl) {
   return null
 }
 
+const ISSUES = {
+  raid: { label: 'Open RAID', test: i => openRaidCount(i) > 0 },
+  overdue: { label: 'Overdue', test: isOverdue },
+  usage: { label: 'Usage data', test: i => !!usageIssue(i) },
+}
+const needsAttention = i => Object.values(ISSUES).some(x => x.test(i))
+
+const VIEWS = {
+  active: { label: 'Active', subtitle: 'Signed and in progress' },
+  attention: { label: 'Needs attention', subtitle: 'Active implementations with open RAID items, overdue dates or usage data to review' },
+  pending: { label: 'Pending', subtitle: 'Set up in the portal, not yet signed with Bloomreach' },
+  closed: { label: 'Closed', subtitle: 'Finished implementations' },
+}
+
+function viewOf(impl) {
+  return impl.status === 'pending' ? 'pending' : impl.status === 'complete' ? 'closed' : 'active'
+}
+
+// ---- Cards ----
+
+function Flag({ tone, children, title }) {
+  const styles = {
+    rust: { background: 'var(--rust-bg)', color: 'var(--rust)' },
+    amber: { background: '#FFFCE8', color: '#8A7A00' },
+    muted: { background: 'var(--paper)', color: 'var(--muted)' },
+  }
+  return (
+    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap" style={styles[tone]} title={title}>
+      {children}
+    </span>
+  )
+}
+
+function DueLabel({ impl }) {
+  const d = daysUntil(impl.planned_completion_date)
+  if (d == null) return null
+  const date = new Date(impl.planned_completion_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  if (d < 0) return <Flag tone="rust" title={`Planned completion ${date}`}>Overdue {-d}d</Flag>
+  if (d <= 14) return <Flag tone="amber" title={`Planned completion ${date}`}>Due in {d}d</Flag>
+  return <Flag tone="muted">Due {date}</Flag>
+}
+
+function Rail({ label, done, total, color }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{label}</span>
+        <span className="font-mono text-[11px]" style={{ color: 'var(--muted)' }}>{done}/{total}</span>
+      </div>
+      <RolloutRail total={total} completed={done} color={total && done === total ? 'var(--moss)' : color} size="sm" />
+    </div>
+  )
+}
+
+function ImplCard({ impl, tpKeys, qaKeys, showPartner, index = 0 }) {
+  const view = viewOf(impl)
+  const openRaid = openRaidCount(impl)
+  const usageProblem = view === 'active' && usageIssue(impl)
+  const status = IMPLEMENTATION_STATUSES[impl.status] ?? IMPLEMENTATION_STATUSES.active
+
+  return (
+    <Link
+      to={`/admin/implementation/${impl.id}`}
+      className="impl-card pressable card-enter flex flex-col bg-white rounded-2xl p-4"
+      style={{ border: '1px solid var(--hairline)', '--i': Math.min(index, 10) }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[14.5px] font-semibold truncate" style={{ color: 'var(--ink)' }}>{impl.client_name}</div>
+          {showPartner && <div className="text-xs truncate" style={{ color: 'var(--muted)' }}>{impl.partner_name}</div>}
+        </div>
+        {view === 'active'
+          ? <DueLabel impl={impl} />
+          : <Flag tone="muted"><span style={{ color: status.color }}>{status.label}</span></Flag>}
+      </div>
+
+      {view === 'active' && (openRaid > 0 || usageProblem) && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {openRaid > 0 && <Flag tone="rust">{openRaid} open RAID</Flag>}
+          {usageProblem && <Flag tone="amber" title={`Usage data ${usageProblem}`}>Usage data</Flag>}
+        </div>
+      )}
+
+      {view !== 'pending' && (
+        <div className="space-y-2.5 mt-auto pt-4">
+          <Rail label="Rollout" done={stepsDone(impl.touchPoints, tpKeys)} total={tpKeys.length} color="var(--gold)" />
+          <Rail label="QA" done={stepsDone(impl.qaSteps, qaKeys)} total={qaKeys.length} color="var(--arctic)" />
+        </div>
+      )}
+    </Link>
+  )
+}
+
+// ---- Sidebar ----
+
+function NavItem({ active, onClick, label, count, tone }) {
+  const badge = active ? { background: 'rgba(255,255,255,0.2)' }
+    : tone === 'rust' ? { background: 'var(--rust-bg)', color: 'var(--rust)' }
+    : { background: 'var(--paper)', color: 'var(--muted)' }
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-between gap-2 text-left text-[13px] px-3 py-2 rounded-lg transition-colors"
+      style={active ? { background: 'var(--ink)', color: '#fff' } : { color: 'var(--ink)' }}
+      aria-current={active ? 'true' : undefined}
+    >
+      <span className="truncate">{label}</span>
+      <span className="text-[11px] font-semibold rounded-full px-1.5 min-w-5 text-center" style={badge}>{count}</span>
+    </button>
+  )
+}
+
+function Stat({ label, value, tone, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="text-left bg-white rounded-2xl px-4 py-3 transition-shadow hover:shadow-md"
+      style={{ border: '1px solid var(--hairline)' }}
+    >
+      <div className="font-mono text-2xl font-semibold leading-none" style={{ color: tone === 'rust' && value > 0 ? 'var(--rust)' : 'var(--ink)' }}>{value}</div>
+      <div className="text-xs mt-1.5" style={{ color: 'var(--muted)' }}>{label}</div>
+    </button>
+  )
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="grid gap-6 md:grid-cols-[240px_1fr]" role="status" aria-label="Loading implementations">
+      <div className="space-y-2">{Array.from({ length: 9 }, (_, i) => <SkeletonBar key={i} className="h-8" />)}</div>
+      <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+        {Array.from({ length: 9 }, (_, i) => <SkeletonBar key={i} className="h-[150px] !rounded-2xl" />)}
+      </div>
+    </div>
+  )
+}
+
+// ---- Add implementation ----
+
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <span className="block text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>{label}</span>
+      {children}
+    </label>
+  )
+}
+
 const EMPTY_FORM = { emails: '', partner_name: '', client_name: '', slackChannelId: '' }
 
+function AddImplementationModal({ partners, onAdd, onClose }) {
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const set = key => e => setForm(f => ({ ...f, [key]: e.target.value }))
+  const inputClass = 'w-full rounded-lg px-3 py-2 text-sm focus:outline-none'
+  const inputStyle = { border: '1px solid var(--hairline)' }
+
+  async function submit(e, close) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    const err = await onAdd(form)
+    setBusy(false)
+    if (err) setError(err)
+    else close()
+  }
+
+  return (
+    <ModalShell onClose={onClose} panelClassName="max-w-md">
+      {close => (
+        <form onSubmit={e => submit(e, close)} className="p-6">
+          <div className="flex items-start justify-between mb-1">
+            <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--ink)' }}>Add implementation</h2>
+            <button type="button" onClick={close} className="text-xl leading-none hover:opacity-70" style={{ color: 'var(--muted)' }} aria-label="Close">×</button>
+          </div>
+          <p className="text-[13px] mb-5" style={{ color: 'var(--muted)' }}>
+            Starts as Pending — mark it Active from the implementation’s Setup tab once the client has signed.
+          </p>
+          <div className="space-y-3 mb-5">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Partner *">
+                <input required list="known-partners" value={form.partner_name} onChange={set('partner_name')} className={inputClass} style={inputStyle} autoFocus />
+                <datalist id="known-partners">{partners.map(p => <option key={p} value={p} />)}</datalist>
+              </Field>
+              <Field label="Client *">
+                <input required value={form.client_name} onChange={set('client_name')} className={inputClass} style={inputStyle} />
+              </Field>
+            </div>
+            <Field label="Partner email(s) *">
+              <input required value={form.emails} onChange={set('emails')} placeholder="jane@partner.com, alex@partner.com" className={inputClass} style={inputStyle} />
+            </Field>
+            <Field label="Slack channel ID">
+              <input value={form.slackChannelId} onChange={set('slackChannelId')} placeholder="C0123ABCD (optional)" className={inputClass} style={inputStyle} />
+            </Field>
+          </div>
+          {error && <p className="text-xs mb-3" style={{ color: 'var(--rust)' }}>{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={close} className="text-sm font-medium px-4 py-2 rounded-[10px]" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>Cancel</button>
+            <button type="submit" disabled={busy} className="disabled:opacity-50 text-sm font-semibold px-4 py-2 rounded-[10px]" style={{ background: 'var(--gold)', color: '#000' }}>
+              {busy ? 'Adding…' : 'Add implementation'}
+            </button>
+          </div>
+        </form>
+      )}
+    </ModalShell>
+  )
+}
+
+// ---- Page ----
+
 export default function AdminDashboard({ credential, userInfo, onLogout }) {
-  // Reachable by SDC too (they see every implementation, same as admin),
-  // but implementation management (add partner, approve sign-ups) stays
+  // Reachable by SDC and Viewer too (they see every implementation), but
+  // implementation management (add implementation, sign-up approvals) stays
   // admin-only — isAdmin here is the true-admin flag, not "can view".
   const isAdmin = !!userInfo?.isAdmin
   const [implementations, setImplementations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState(EMPTY_FORM)
+  const [view, setView] = useState('active') // keyof VIEWS
+  const [issue, setIssue] = useState('all') // within 'attention': 'all' | keyof ISSUES
+  const [partner, setPartner] = useState(null)
+  const [search, setSearch] = useState('')
   const [adding, setAdding] = useState(false)
-  const [addError, setAddError] = useState(null)
-  const [partnerFilter, setPartnerFilter] = useState('All')
-  const [attentionFilter, setAttentionFilter] = useState('all') // 'all' | 'raid' | 'overdue' | 'usage'
-  const [showCompleted, setShowCompleted] = useState(false)
-  const [pending, setPending] = useState([])
+  const [pendingCount, setPendingCount] = useState(0)
   const [steps, setSteps] = useState(DEFAULT_STEPS)
   const tpKeys = steps.touchpoints.map(s => s.key)
   const qaKeys = steps.qaSteps.map(s => s.key)
-  const activeSectionRef = useRef(null)
-  const pendingSectionRef = useRef(null)
-  const closedSectionRef = useRef(null)
-
-  function scrollToSection(ref) {
-    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
 
   useEffect(() => {
     getAllImplementations(credential)
@@ -91,110 +287,71 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
       })
       .catch(() => setError('Failed to load implementations.'))
       .finally(() => setLoading(false))
-    getPendingSignups().then(setPending).catch(() => {})
+    if (isAdmin) getPendingSignups().then(p => setPendingCount(p.length)).catch(() => {})
     getStepDefinitions().then(setSteps).catch(() => {})
   }, [])
 
-  async function approvePending(profile, target) {
-    const res = await approveSignup(profile.email, target)
-    if (res.error) return res.error
-    setPending(prev => prev.filter(p => p.id !== profile.id))
-    if (target.type === 'implementation') {
-      setImplementations(prev => prev.map(impl => impl.id === target.id
-        ? { ...impl, accessEmails: [...(impl.accessEmails || []), profile.email] }
-        : impl))
-    }
-    if (target.type === 'partner') {
-      setImplementations(prev => prev.map(impl => impl.partner_name === target.partnerName
-        ? { ...impl, accessEmails: [...(impl.accessEmails || []), `${profile.email} (partner-wide)`] }
-        : impl))
-    }
-    return null
-  }
-
-  async function declinePending(profile) {
-    const res = await declineSignup(profile.id)
-    if (res.error) return res.error
-    setPending(prev => prev.filter(p => p.id !== profile.id))
-    return null
-  }
-
-  async function handleAdd(e) {
-    e.preventDefault()
-    setAdding(true)
-    setAddError(null)
+  async function handleAdd(form) {
     try {
       const res = await addImplementation(credential, form)
-      if (res.error) {
-        setAddError(res.error)
-      } else {
-        const emails = form.emails.split(',').map(s => s.trim()).filter(Boolean)
-        setImplementations(prev => [...prev, {
-          id: res.id,
-          partner_name: form.partner_name,
-          client_name: form.client_name,
-          status: 'pending',
-          accessEmails: emails,
-          slackChannelId: form.slackChannelId.trim(),
-          touchPoints: {},
-          qaSteps: {},
-          raid: [],
-        }])
-        setForm(EMPTY_FORM)
-        setShowAdd(false)
-      }
+      if (res.error) return res.error
+      setImplementations(prev => [...prev, {
+        id: res.id,
+        partner_name: form.partner_name.trim(),
+        client_name: form.client_name.trim(),
+        status: 'pending',
+        accessEmails: form.emails.split(',').map(s => s.trim()).filter(Boolean),
+        slackChannelId: form.slackChannelId.trim(),
+        touchPoints: {},
+        qaSteps: {},
+        raid: [],
+      }])
+      setView('pending')
+      setPartner(null)
+      return null
     } catch {
-      setAddError('Failed to add partner. Please try again.')
+      return 'Failed to add implementation. Please try again.'
     }
-    setAdding(false)
   }
 
-  function handleActiveTileClick() {
-    setAttentionFilter('all')
-    scrollToSection(activeSectionRef)
-  }
-  function handlePendingTileClick() {
-    scrollToSection(pendingSectionRef)
-  }
-  function handleClosedTileClick() {
-    setShowCompleted(true)
-    scrollToSection(closedSectionRef)
-  }
-  function handleRaidTileClick() {
-    setAttentionFilter(f => f === 'raid' ? 'all' : 'raid')
-    scrollToSection(activeSectionRef)
-  }
-  function handleOverdueTileClick() {
-    setAttentionFilter(f => f === 'overdue' ? 'all' : 'overdue')
-    scrollToSection(activeSectionRef)
-  }
-  function handleUsageTileClick() {
-    setAttentionFilter(f => f === 'usage' ? 'all' : 'usage')
-    scrollToSection(activeSectionRef)
+  const byView = useMemo(() => {
+    const groups = { active: [], attention: [], pending: [], closed: [] }
+    for (const i of implementations) {
+      const v = viewOf(i)
+      groups[v].push(i)
+      if (v === 'active' && needsAttention(i)) groups.attention.push(i)
+    }
+    return groups
+  }, [implementations])
+
+  const issueCounts = Object.fromEntries(Object.entries(ISSUES).map(([k, x]) => [k, byView.active.filter(x.test).length]))
+  const totalOpenRaid = byView.active.reduce((sum, i) => sum + openRaidCount(i), 0)
+
+  const q = search.trim().toLowerCase()
+  const inView = byView[view]
+    .filter(i => view !== 'attention' || issue === 'all' || ISSUES[issue].test(i))
+    .filter(i => !q || [i.client_name, i.partner_name].some(v => v?.toLowerCase().includes(q)))
+
+  // Partner list reflects the current view, so counts always add up.
+  const partnerCounts = {}
+  for (const i of inView) if (i.partner_name) partnerCounts[i.partner_name] = (partnerCounts[i.partner_name] || 0) + 1
+  const partnerNames = Object.keys(partnerCounts).sort((a, b) => a.localeCompare(b))
+  const allPartners = Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()
+
+  const visible = inView
+    .filter(i => !partner || i.partner_name === partner)
+    .sort((a, b) => (a.partner_name + a.client_name).localeCompare(b.partner_name + b.client_name))
+
+  function pickView(v) {
+    setView(v)
+    setIssue('all')
+    setPartner(null)
   }
 
-  const activeImpls = implementations.filter(i => i.status === 'active' || !i.status)
-  const pendingImpls = implementations.filter(i => i.status === 'pending')
-  const completedImpls = implementations.filter(i => i.status === 'complete')
-  const partners = Array.from(new Set(activeImpls.map(i => i.partner_name).filter(Boolean))).sort()
-  const totalOpenRaid = implementations.reduce((sum, i) => sum + openRaidCount(i), 0)
-  const overdueCount = activeImpls.filter(isOverdue).length
-  const usageIssueCount = activeImpls.filter(usageIssue).length
-  const hasAttention = overdueCount > 0 || totalOpenRaid > 0 || usageIssueCount > 0
-
-  const ATTENTION_PREDICATES = {
-    raid: i => openRaidCount(i) > 0,
-    overdue: isOverdue,
-    usage: i => !!usageIssue(i),
-  }
-  const filteredActive = activeImpls
-    .filter(i => partnerFilter === 'All' || i.partner_name === partnerFilter)
-    .filter(i => attentionFilter === 'all' || ATTENTION_PREDICATES[attentionFilter](i))
-  const groupNames = partnerFilter === 'All' ? partners : [partnerFilter]
-  const partnerGroups = groupNames.map(name => {
-    const impls = filteredActive.filter(i => i.partner_name === name)
-    return { name, impls }
-  }).filter(g => g.impls.length > 0)
+  const title = partner ? `${partner}` : VIEWS[view].label
+  const subtitle = partner
+    ? `${visible.length} ${VIEWS[view].label.toLowerCase()} implementation${visible.length === 1 ? '' : 's'}`
+    : VIEWS[view].subtitle
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
@@ -202,451 +359,163 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
         <Navbar userInfo={userInfo} onLogout={onLogout} title={userInfo?.isViewer && !userInfo?.isAdmin && !userInfo?.isSDC ? 'Viewer — Partner Portal' : 'Admin — Partner Portal'} />
       </div>
 
-      <div className="max-w-7xl mx-auto px-7 py-7">
-
+      <div className="max-w-7xl mx-auto px-4 sm:px-7 py-7">
         {/* Print-only header, shown when exported to PDF */}
         <div className="print-only mb-6">
-          <h1 className="font-display text-xl font-semibold" style={{ color: 'var(--ink)' }}>Bloomreach Partner Portal — All Implementations</h1>
+          <h1 className="font-display text-xl font-semibold" style={{ color: 'var(--ink)' }}>Bloomreach Partner Portal — {title}</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>Exported {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
         </div>
 
         {/* Header */}
         <div className="no-print flex items-center justify-between mb-5 flex-wrap gap-3">
           <div>
-            <h1 className="font-display text-[22px] font-semibold" style={{ color: 'var(--ink)' }}>All Implementations</h1>
+            <h1 className="font-display text-[22px] font-semibold" style={{ color: 'var(--ink)' }}>Implementations</h1>
             <p className="text-[13px] mt-1" style={{ color: 'var(--muted)' }}>
-              {activeImpls.length} active implementation{activeImpls.length !== 1 ? 's' : ''} across {partners.length} partner{partners.length !== 1 ? 's' : ''}
+              {byView.active.length} active across {new Set(byView.active.map(i => i.partner_name)).size} partners
             </p>
           </div>
-          <div className="flex gap-2.5">
+          <div className="flex flex-wrap gap-2">
             {isAdmin && (
-              <Link
-                to="/admin/analytics"
-                className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
-                style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
-              >
+              <Link to="/admin/analytics" className="text-sm font-medium px-4 py-2 rounded-[10px]" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
                 Analytics
               </Link>
             )}
             {isAdmin && (
-              <Link
-                to="/admin/permissions"
-                className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
-                style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}
-              >
+              <Link to="/admin/permissions" className="text-sm font-medium px-4 py-2 rounded-[10px]" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
                 Permissions
               </Link>
             )}
-            <button
-              onClick={() => window.print()}
-              className="text-sm font-medium px-4 py-2 rounded-[10px] transition-colors"
-              style={{ border: '1px solid var(--hairline)', background: '#fff', color: 'var(--ink)' }}
-            >
+            <button onClick={() => window.print()} className="text-sm font-medium px-4 py-2 rounded-[10px]" style={{ border: '1px solid var(--hairline)', background: '#fff', color: 'var(--ink)' }}>
               Export to PDF
             </button>
             {isAdmin && (
-              <button
-                onClick={() => { setShowAdd(v => !v); setAddError(null) }}
-                className="text-black text-sm font-semibold px-4 py-2 rounded-[10px] transition-opacity hover:opacity-90"
-                style={{ background: 'var(--gold)' }}
-              >
+              <button onClick={() => setAdding(true)} className="text-sm font-semibold px-4 py-2 rounded-[10px]" style={{ background: 'var(--gold)', color: '#000' }}>
                 + Add implementation
               </button>
             )}
           </div>
         </div>
 
-        {/* Pending sign-ups awaiting approval — admin only, SDC just views implementations */}
-        {isAdmin && pending.length > 0 && (
-          <div className="no-print bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--gold)' }}>
-            <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>
-              Pending sign-ups <span className="font-mono text-sm" style={{ color: 'var(--muted)' }}>({pending.length})</span>
-            </h2>
-            <p className="text-xs mt-0.5 mb-4" style={{ color: 'var(--muted)' }}>
-              These people created an account but can't see anything yet. Assign them to an engagement to let them in.
-            </p>
-            <div className="space-y-3">
-              {pending.map(p => (
-                <PendingRow key={p.id} profile={p} implementations={implementations} onApprove={approvePending} onDecline={declinePending} />
-              ))}
-            </div>
-          </div>
+        {/* Sign-ups now live on the Permissions page — just point there */}
+        {isAdmin && pendingCount > 0 && (
+          <Link
+            to="/admin/permissions"
+            state={{ group: 'awaiting' }}
+            className="no-print flex items-center justify-between gap-3 rounded-2xl px-4 py-3 mb-5 hover:opacity-90"
+            style={{ background: '#FFFCE8', border: '1px solid var(--gold)' }}
+          >
+            <span className="text-[13px] font-medium" style={{ color: 'var(--ink)' }}>
+              {pendingCount} {pendingCount === 1 ? 'person is' : 'people are'} waiting for access
+            </span>
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--ink)' }}>Review →</span>
+          </Link>
         )}
-
-        {/* Add partner form */}
-        <Collapse open={showAdd} className="no-print">
-          <div className="bg-white rounded-2xl p-6 mb-5" style={{ border: '1px solid var(--hairline)' }}>
-            <h2 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Add new partner implementation</h2>
-            <p className="text-xs mb-4 mt-0.5" style={{ color: 'var(--muted)' }}>Starts as Pending — mark it Active once the client's signed, from the implementation's Setup tab.</p>
-            <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>Partner email(s) *</label>
-                <input
-                  type="text"
-                  required
-                  value={form.emails}
-                  onChange={e => setForm(f => ({ ...f, emails: e.target.value }))}
-                  placeholder="jane@partner.com, alex@partner.com"
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid var(--hairline)' }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>Partner name *</label>
-                <input
-                  type="text"
-                  required
-                  value={form.partner_name}
-                  onChange={e => setForm(f => ({ ...f, partner_name: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid var(--hairline)' }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>Client name *</label>
-                <input
-                  type="text"
-                  required
-                  value={form.client_name}
-                  onChange={e => setForm(f => ({ ...f, client_name: e.target.value }))}
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid var(--hairline)' }}
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--muted)' }}>Slack channel ID</label>
-                <input
-                  type="text"
-                  value={form.slackChannelId}
-                  onChange={e => setForm(f => ({ ...f, slackChannelId: e.target.value }))}
-                  placeholder="C0123ABCD (optional)"
-                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none"
-                  style={{ border: '1px solid var(--hairline)' }}
-                />
-              </div>
-              {addError && (
-                <div className="sm:col-span-4 text-sm" style={{ color: 'var(--rust)' }}>{addError}</div>
-              )}
-              <div className="sm:col-span-4 flex gap-3">
-                <button
-                  type="submit"
-                  disabled={adding}
-                  className="disabled:opacity-50 text-black text-sm font-medium px-5 py-2 rounded-lg transition-opacity hover:opacity-90"
-                  style={{ background: 'var(--gold)' }}
-                >
-                  {adding ? 'Adding…' : 'Add implementation'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowAdd(false); setForm(EMPTY_FORM); setAddError(null) }}
-                  className="text-sm px-4 py-2"
-                  style={{ color: 'var(--muted)' }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </Collapse>
 
         {loading ? (
           <DashboardSkeleton />
         ) : error ? (
           <div className="text-center py-20 text-sm" style={{ color: 'var(--rust)' }}>{error}</div>
-        ) : implementations.length === 0 ? (
-          <div className="bg-white rounded-2xl p-12 text-center text-sm" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
-            No implementations yet. Add a partner above to get started.
-          </div>
         ) : (
           <>
-            {/* Attention strip */}
-            {hasAttention && (
-              <div className="no-print flex items-center gap-3 rounded-2xl mb-5" style={{ background: '#fbeee9', border: '1px solid #f0c9ba', padding: '14px 18px' }}>
-                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: 'var(--rust)' }} />
-                <p className="text-[13.5px] font-medium m-0" style={{ color: '#8a3018' }}>
-                  {overdueCount} overdue implementation{overdueCount !== 1 ? 's' : ''} · {totalOpenRaid} open RAID item{totalOpenRaid !== 1 ? 's' : ''} · {usageIssueCount} implementation{usageIssueCount !== 1 ? 's' : ''} with usage data needing review
-                </p>
-              </div>
-            )}
-
-            {/* Primary stats */}
-            <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-              <button
-                type="button"
-                onClick={handleActiveTileClick}
-                className="no-print text-left bg-white rounded-2xl relative overflow-hidden transition-shadow hover:shadow-md cursor-pointer"
-                style={{ border: '1px solid var(--hairline)', padding: '18px 20px' }}
-              >
-                <div className="absolute top-0 left-0 right-0 h-[3px]" style={{ background: 'var(--gold)' }} />
-                <p className="font-mono text-[32px] font-semibold leading-none" style={{ color: 'var(--ink)' }}>{activeImpls.length}</p>
-                <p className="text-[12.5px] mt-1.5" style={{ color: 'var(--muted)' }}>Active</p>
-              </button>
+            {/* At-a-glance numbers — each one jumps to its view */}
+            <div className="no-print grid gap-3 mb-6 grid-cols-2 sm:grid-cols-4">
+              <Stat label="Active" value={byView.active.length} onClick={() => pickView('active')} />
+              <Stat label="Need attention" value={byView.attention.length} tone="rust" onClick={() => pickView('attention')} />
+              <Stat label="Overdue" value={issueCounts.overdue} tone="rust" onClick={() => { pickView('attention'); setIssue('overdue') }} />
+              <Stat label="Open RAID items" value={totalOpenRaid} tone="rust" onClick={() => { pickView('attention'); setIssue('raid') }} />
             </div>
 
-            {/* Secondary stats */}
-            <div className="grid gap-2.5 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))' }}>
-              <StatTile label="Pending" value={pendingImpls.length} onClick={handlePendingTileClick} />
-              <StatTile label="Closed" value={completedImpls.length} onClick={handleClosedTileClick} />
-              <StatTile label="Open RAID" value={totalOpenRaid} warn={totalOpenRaid > 0} active={attentionFilter === 'raid'} onClick={handleRaidTileClick} />
-              <StatTile label="Overdue" value={overdueCount} warn={overdueCount > 0} active={attentionFilter === 'overdue'} onClick={handleOverdueTileClick} />
-              <StatTile label="Usage" value={usageIssueCount} warn={usageIssueCount > 0} active={attentionFilter === 'usage'} onClick={handleUsageTileClick} />
-            </div>
-
-            {/* Partner filter chips */}
-            <div ref={activeSectionRef} className="no-print flex items-center gap-2 mb-5 flex-wrap">
-              {['All', ...partners].map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPartnerFilter(p)}
-                  className="text-[12.5px] font-medium px-3.5 py-1.5 rounded-full transition-colors"
-                  style={partnerFilter === p
-                    ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' }
-                    : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}
-                >
-                  {p}
-                </button>
-              ))}
-              {attentionFilter !== 'all' && (
-                <button
-                  onClick={() => setAttentionFilter('all')}
-                  className="text-[12.5px] font-medium px-3.5 py-1.5 rounded-full transition-colors"
-                  style={{ background: '#fbeee9', color: 'var(--rust)', border: '1px solid #f0c9ba' }}
-                >
-                  {{ raid: 'Open RAID', overdue: 'Overdue', usage: 'Usage' }[attentionFilter]} only ×
-                </button>
-              )}
-            </div>
-
-            {/* Partner-grouped implementation cards */}
-            {partnerGroups.length === 0 ? (
-              <div className="bg-white rounded-2xl p-12 text-center text-sm mb-6" style={{ border: '1px solid var(--hairline)', color: 'var(--muted)' }}>
-                No active implementations{partnerFilter !== 'All' ? ` for ${partnerFilter}` : ''}{attentionFilter !== 'all' ? ' matching this filter' : ''}.
-              </div>
-            ) : (
-              partnerGroups.map(group => (
-                <div key={group.name} className="mb-8">
-                  <div className="flex items-baseline gap-2.5 mb-3">
-                    <h3 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>{group.name}</h3>
-                    <span className="text-xs" style={{ color: 'var(--muted)' }}>{group.impls.length} implementation{group.impls.length !== 1 ? 's' : ''}</span>
-                  </div>
-                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                    {group.impls.map((impl, i) => (
-                      <ImplCard key={impl.id} impl={impl} tpKeys={tpKeys} qaKeys={qaKeys} index={i} />
-                    ))}
-                  </div>
+            <div className="grid gap-6 md:grid-cols-[240px_1fr] items-start print:block">
+              {/* Phones: search + dropdowns instead of the sidebar */}
+              <div className="no-print md:hidden flex flex-col gap-2">
+                <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients or partners…"
+                  className="w-full rounded-lg px-3 py-2 text-sm focus:outline-none bg-white" style={{ border: '1px solid var(--hairline)' }} />
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={view} onChange={e => pickView(e.target.value)} aria-label="View"
+                    className="rounded-lg px-3 py-2 text-sm focus:outline-none bg-white" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
+                    {Object.entries(VIEWS).map(([k, v]) => <option key={k} value={k}>{v.label} ({byView[k].length})</option>)}
+                  </select>
+                  <select value={partner || ''} onChange={e => setPartner(e.target.value || null)} aria-label="Partner"
+                    className="rounded-lg px-3 py-2 text-sm focus:outline-none bg-white" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
+                    <option value="">All partners</option>
+                    {partnerNames.map(p => <option key={p} value={p}>{p} ({partnerCounts[p]})</option>)}
+                  </select>
                 </div>
-              ))
-            )}
+              </div>
 
-            {/* Pending — set up in the portal, not yet signed with Bloomreach. Shown expanded: unlike Completed, these still need action. */}
-            {pendingImpls.length > 0 && (
-              <div ref={pendingSectionRef} className="mb-8">
-                <div className="flex items-baseline gap-2.5 mb-3">
-                  <h3 className="font-display text-base font-semibold" style={{ color: 'var(--ink)' }}>Pending — not yet signed</h3>
-                  <span className="text-xs" style={{ color: 'var(--muted)' }}>{pendingImpls.length} implementation{pendingImpls.length !== 1 ? 's' : ''}</span>
+              {/* Sidebar */}
+              <aside className="no-print hidden md:block md:sticky md:top-6 bg-white rounded-2xl p-3" style={{ border: '1px solid var(--hairline)' }}>
+                <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients or partners…"
+                  className="w-full rounded-lg px-3 py-2 text-[13px] focus:outline-none mb-2" style={{ border: '1px solid var(--hairline)', background: 'var(--paper)' }} />
+                <nav className="space-y-0.5">
+                  <NavItem active={view === 'active' && !partner} onClick={() => pickView('active')} label="Active" count={byView.active.length} />
+                  <NavItem active={view === 'attention' && !partner} onClick={() => pickView('attention')} label="Needs attention" count={byView.attention.length} tone={byView.attention.length ? 'rust' : undefined} />
+                  <NavItem active={view === 'pending' && !partner} onClick={() => pickView('pending')} label="Pending" count={byView.pending.length} />
+                  <NavItem active={view === 'closed' && !partner} onClick={() => pickView('closed')} label="Closed" count={byView.closed.length} />
+                </nav>
+                <div className="text-[11px] font-semibold uppercase tracking-widest px-3 mt-4 mb-1.5" style={{ color: 'var(--muted)' }}>
+                  Partners · {VIEWS[view].label.toLowerCase()}
                 </div>
-                <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                  {pendingImpls.map(impl => (
-                    <StatusCard key={impl.id} impl={impl} statusKey="pending" />
+                <nav className="space-y-0.5 max-h-[50vh] overflow-y-auto">
+                  {partnerNames.map(p => (
+                    <NavItem key={p} active={partner === p} onClick={() => setPartner(partner === p ? null : p)} label={p} count={partnerCounts[p]} />
                   ))}
-                </div>
-              </div>
-            )}
+                  {partnerNames.length === 0 && <p className="text-xs px-3 py-1" style={{ color: 'var(--muted)' }}>None in this view.</p>}
+                </nav>
+              </aside>
 
-            {/* Closed — collapsed by default */}
-            {completedImpls.length > 0 && (
-              <div ref={closedSectionRef}>
-                <button
-                  onClick={() => setShowCompleted(v => !v)}
-                  className="no-print flex items-center gap-2 text-sm font-medium hover:opacity-70"
-                  style={{ color: 'var(--muted)' }}
-                >
-                  <span className={`inline-block transition-transform ${showCompleted ? 'rotate-90' : ''}`}>›</span>
-                  Closed ({completedImpls.length})
-                </button>
-                <Collapse open={showCompleted}>
-                  <div className="grid gap-3 pt-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-                    {completedImpls.map(impl => (
-                      <StatusCard key={impl.id} impl={impl} statusKey="complete" />
+              {/* Main */}
+              <section>
+                <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
+                  <div>
+                    <h2 className="font-display text-lg font-semibold" style={{ color: 'var(--ink)' }}>{title}</h2>
+                    <p className="text-[13px]" style={{ color: 'var(--muted)' }}>{subtitle}</p>
+                  </div>
+                  {partner && (
+                    <button onClick={() => setPartner(null)} className="no-print text-[13px] font-medium hover:underline" style={{ color: 'var(--arctic-dark)' }}>
+                      ← All partners
+                    </button>
+                  )}
+                </div>
+
+                {view === 'attention' && (
+                  <div className="no-print flex flex-wrap gap-2 mb-4">
+                    {[['all', 'All issues', byView.attention.length], ...Object.entries(ISSUES).map(([k, x]) => [k, x.label, issueCounts[k]])].map(([k, label, n]) => (
+                      <button
+                        key={k}
+                        onClick={() => setIssue(k)}
+                        disabled={n === 0}
+                        className="disabled:opacity-40 text-[12.5px] font-medium px-3 py-1.5 rounded-full transition-colors"
+                        style={issue === k
+                          ? { background: 'var(--ink)', color: '#fff', border: '1px solid var(--ink)' }
+                          : { background: '#fff', color: 'var(--ink)', border: '1px solid var(--hairline)' }}
+                      >
+                        {label} <span style={{ opacity: 0.6 }}>{n}</span>
+                      </button>
                     ))}
                   </div>
-                </Collapse>
-              </div>
-            )}
+                )}
+
+                {visible.length === 0 ? (
+                  <div className="bg-white rounded-2xl py-16 px-6 text-center" style={{ border: '1px dashed var(--hairline)' }}>
+                    <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>
+                      {q ? 'Nothing matches that search.' : view === 'attention' ? 'Nothing needs attention — all clear.' : `No ${VIEWS[view].label.toLowerCase()} implementations.`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+                    {visible.map((impl, i) => (
+                      <ImplCard key={impl.id} impl={impl} tpKeys={tpKeys} qaKeys={qaKeys} showPartner={!partner} index={i} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
           </>
         )}
       </div>
-    </div>
-  )
-}
 
-function ImplCard({ impl, tpKeys, qaKeys, index = 0 }) {
-  const tpDone = tpKeys.filter(k => (impl.touchPoints || {})[k] === 'complete').length
-  const qaDone = qaKeys.filter(k => (impl.qaSteps || {})[k] === 'complete').length
-  const progress = getProgress(impl, tpKeys)
-  const qa = getQAProgress(impl, qaKeys)
-  const openRaid = openRaidCount(impl)
-  const usageProblem = usageIssue(impl)
-  return (
-    <Link
-      to={`/admin/implementation/${impl.id}`}
-      className="impl-card pressable card-enter block bg-white rounded-2xl p-4"
-      style={{ border: '1px solid var(--hairline)', '--i': Math.min(index, 8) }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</span>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: IMPLEMENTATION_STATUSES[impl.status]?.bg ?? IMPLEMENTATION_STATUSES.active.bg, color: IMPLEMENTATION_STATUSES[impl.status]?.color ?? IMPLEMENTATION_STATUSES.active.color }}>
-          {IMPLEMENTATION_STATUSES[impl.status]?.label ?? IMPLEMENTATION_STATUSES.active.label}
-        </span>
-      </div>
-      {openRaid > 0 && (
-        <span className="inline-block mt-1.5 text-[11px] font-semibold px-2 py-0.5 rounded" style={{ background: 'var(--rust-bg)', color: 'var(--rust)' }}>
-          {openRaid} open RAID
-        </span>
-      )}
-      {usageProblem && (
-        <span className="inline-block mt-1.5 ml-1.5 text-[11px] font-semibold px-2 py-0.5 rounded" style={{ background: '#FFFCE8', color: '#8A7A00' }}>
-          Usage: {usageProblem}
-        </span>
-      )}
-      <div className="mt-3">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>Progress</span>
-          <span className="font-mono text-[11.5px]" style={{ color: 'var(--muted)' }}>{progress}%</span>
-        </div>
-        <RolloutRail total={tpKeys.length} completed={tpDone} color={progress === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
-      </div>
-      <div className="mt-2.5">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>QA</span>
-          <span className="font-mono text-[11.5px]" style={{ color: 'var(--muted)' }}>{qa}%</span>
-        </div>
-        <RolloutRail total={qaKeys.length} completed={qaDone} color={qa === 100 ? 'var(--moss)' : 'var(--arctic)'} size="sm" />
-      </div>
-      <div className="flex justify-end mt-3">
-        <span className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>View →</span>
-      </div>
-    </Link>
-  )
-}
-
-function StatTile({ label, value, warn, active, onClick }) {
-  const disabled = value === 0
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="no-print text-left bg-white rounded-xl flex items-center justify-between transition-colors"
-      style={{
-        border: active ? '1px solid var(--gold-dark)' : '1px solid var(--hairline)',
-        background: active ? '#FFFCE8' : '#fff',
-        padding: '12px 16px',
-        opacity: disabled ? 0.55 : 1,
-        cursor: disabled ? 'default' : 'pointer',
-      }}
-    >
-      <span className="text-[12.5px]" style={{ color: 'var(--muted)' }}>{label}</span>
-      <span className="font-mono text-[15px] font-semibold" style={{ color: warn ? 'var(--rust)' : 'var(--ink)' }}>{value}</span>
-    </button>
-  )
-}
-
-// Used for both the Pending and Closed lists — same layout, different pill.
-function StatusCard({ impl, statusKey }) {
-  const meta = IMPLEMENTATION_STATUSES[statusKey]
-  return (
-    <Link
-      to={`/admin/implementation/${impl.id}`}
-      className="impl-card pressable block bg-white rounded-2xl p-4"
-      style={{ border: '1px solid var(--hairline)', opacity: 0.85 }}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[14.5px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</span>
-        <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: meta.bg, color: meta.color }}>{meta.label}</span>
-      </div>
-      <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{impl.partner_name}</div>
-    </Link>
-  )
-}
-
-function PendingRow({ profile, implementations, onApprove, onDecline }) {
-  const partners = Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()
-  // Pre-select the partner they typed at sign-up, when it matches one we know.
-  const knownPartner = partners.find(p => p.toLowerCase() === profile.partner_name?.trim().toLowerCase())
-  const [choice, setChoice] = useState(knownPartner ? `partner:${knownPartner}` : '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(null)
-  const fullName = [profile.first_name, profile.last_name].filter(Boolean).join(' ')
-
-  async function approve() {
-    if (!choice) { setError('Choose what to grant first.'); return }
-    setBusy(true)
-    setError(null)
-    const target = choice === 'admin'
-      ? { type: 'admin' }
-      : choice === 'sdc'
-      ? { type: 'sdc' }
-      : choice === 'viewer'
-      ? { type: 'viewer' }
-      : { type: 'partner', partnerName: choice.slice(8) }
-    const err = await onApprove(profile, target)
-    if (err) { setError(err); setBusy(false) }
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <div className="min-w-48">
-        <div className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{fullName || profile.email}</div>
-        {fullName && <div className="text-xs" style={{ color: 'var(--ink)' }}>{profile.email}</div>}
-        <div className="text-xs" style={{ color: 'var(--muted)' }}>
-          {[profile.partner_name, profile.job_title].filter(Boolean).join(' · ')}
-          {profile.partner_name || profile.job_title ? ' · ' : ''}
-          signed up {new Date(profile.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-        </div>
-      </div>
-      <select
-        value={choice}
-        onChange={e => setChoice(e.target.value)}
-        className="rounded-lg px-3 py-2 text-sm focus:outline-none"
-        style={{ border: '1px solid var(--hairline)', color: 'var(--ink)', background: '#fff' }}
-        aria-label={`Grant access for ${profile.email}`}
-      >
-        <option value="">Grant access to…</option>
-        <optgroup label="Partner — all their implementations, now and future">
-          {partners.map(p => (
-            <option key={p} value={`partner:${p}`}>{p} (all implementations)</option>
-          ))}
-        </optgroup>
-        <optgroup label="Bloomreach">
-          <option value="admin">Make admin — full access to everything</option>
-          <option value="sdc">Make SDC — sees everything, can only edit QA docs</option>
-          <option value="viewer">Make Viewer — sees most things, can't edit, no documents</option>
-        </optgroup>
-      </select>
-      <button
-        onClick={approve}
-        disabled={busy}
-        className="disabled:opacity-50 text-black text-sm font-medium px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
-        style={{ background: 'var(--gold)' }}
-      >
-        {busy ? 'Approving…' : 'Approve'}
-      </button>
-      <button
-        onClick={async () => {
-          if (!confirm(`Decline ${profile.email}? They keep their account but stay locked out until you approve them later.`)) return
-          setBusy(true)
-          setError(null)
-          const err = await onDecline(profile)
-          if (err) { setError(err); setBusy(false) }
-        }}
-        disabled={busy}
-        className="disabled:opacity-50 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        style={{ border: '1px solid var(--hairline)', color: 'var(--rust)' }}
-      >
-        Decline
-      </button>
-      {error && <span className="text-xs" style={{ color: 'var(--rust)' }}>{error}</span>}
+      {adding && <AddImplementationModal partners={allPartners} onAdd={handleAdd} onClose={() => setAdding(false)} />}
     </div>
   )
 }

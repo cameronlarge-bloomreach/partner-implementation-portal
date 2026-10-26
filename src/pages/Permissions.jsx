@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   getAllAccess, approveSignup, inviteUser, declineSignup, deleteUserAccount,
   removeAdminAccess, removeSDCAccess, removeViewerAccess, removePartnerAccess,
@@ -415,7 +415,8 @@ function PermissionsSkeleton() {
 export default function Permissions({ userInfo, onLogout }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
-  const [group, setGroup] = useState('all') // 'all' | 'team' | 'awaiting' | 'partner:<name>'
+  // The dashboard's "waiting for access" banner links here with state.group.
+  const [group, setGroup] = useState(useLocation().state?.group || 'all') // 'all' | 'team' | 'awaiting' | 'partner:<name>'
   const [search, setSearch] = useState('')
   const [showEmptyPartners, setShowEmptyPartners] = useState(false)
   const [managing, setManaging] = useState(null) // email
