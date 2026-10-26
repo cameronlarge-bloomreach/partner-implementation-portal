@@ -571,8 +571,6 @@ function StatusCard({ impl, statusKey }) {
 }
 
 function PendingRow({ profile, implementations, onApprove, onDecline }) {
-  const sorted = [...implementations].sort((a, b) =>
-    (a.partner_name + a.client_name).localeCompare(b.partner_name + b.client_name))
   const partners = Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()
   // Pre-select the partner they typed at sign-up, when it matches one we know.
   const knownPartner = partners.find(p => p.toLowerCase() === profile.partner_name?.trim().toLowerCase())
@@ -591,9 +589,7 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
       ? { type: 'sdc' }
       : choice === 'viewer'
       ? { type: 'viewer' }
-      : choice.startsWith('partner:')
-      ? { type: 'partner', partnerName: choice.slice(8) }
-      : { type: 'implementation', id: choice.slice(5) }
+      : { type: 'partner', partnerName: choice.slice(8) }
     const err = await onApprove(profile, target)
     if (err) { setError(err); setBusy(false) }
   }
@@ -620,11 +616,6 @@ function PendingRow({ profile, implementations, onApprove, onDecline }) {
         <optgroup label="Partner — all their implementations, now and future">
           {partners.map(p => (
             <option key={p} value={`partner:${p}`}>{p} (all implementations)</option>
-          ))}
-        </optgroup>
-        <optgroup label="Single implementation">
-          {sorted.map(i => (
-            <option key={i.id} value={`impl:${i.id}`}>{i.partner_name} × {i.client_name}</option>
           ))}
         </optgroup>
         <optgroup label="Bloomreach">

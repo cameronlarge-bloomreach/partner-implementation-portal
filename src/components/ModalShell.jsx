@@ -22,6 +22,13 @@ export default function ModalShell({ onClose, panelClassName = '', panelStyle, b
     setTimeout(onClose, EXIT_MS)
   }
 
+  // Escape closes, same animated path as the × button.
+  useEffect(() => {
+    function onKey(e) { if (e.key === 'Escape') close() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   return (
     <div
       className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4"

@@ -773,7 +773,7 @@ export async function deleteStepDefinition(step, implementationId) {
 export async function getAllAccess() {
   try {
     const [profiles, access, admins, sdc, viewers, partnerGrants, impls] = await Promise.all([
-      supabase.from('profiles').select('id, email, created_at, declined').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('id, email, created_at, declined, first_name, last_name, partner_name, job_title').order('created_at', { ascending: false }),
       supabase.from('access').select('email, implementation_id'),
       supabase.from('admin_emails').select('email'),
       supabase.from('sdc_emails').select('email'),
