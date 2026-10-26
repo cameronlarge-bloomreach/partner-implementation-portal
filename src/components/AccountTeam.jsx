@@ -1,12 +1,14 @@
-import { useState } from 'react'
-import { updateAccountContact } from '../api'
+import { useEffect, useState } from 'react'
+import { updateAccountContact, listBloomreachPeople } from '../api'
 
 // Internal account team for an implementation: Partner Services Manager,
 // Customer Success Manager and Account Manager. Internal-only (the API
 // doesn't return these to partners); admins edit, SDC/viewers just see.
 
 // PSM is fixed to the two PSMs today — add another { name, email } here if
-// a third comes on board. CSM / AM are free text: there's no fixed list.
+// a third comes on board. CSM / AM are set by email alone: that's what will
+// match them to their accounts once they're invited to BLIMP. Their name is
+// taken from their BLIMP profile when they have one, else from the email.
 const PSM_OPTIONS = [
   { name: 'Cameron Large', email: 'cameron.large@bloomreach.com' },
   { name: 'James Tewson', email: 'james.tewson@bloomreach.com' },
@@ -21,11 +23,19 @@ const ROLES = [
 const inputClass = 'rounded-lg px-2.5 py-1.5 text-xs bg-white focus:outline-none min-w-0'
 const inputStyle = { border: '1px solid var(--hairline)' }
 
+// priya.shah@bloomreach.com -> "Priya Shah"
+function nameFromEmail(email) {
+  return (email || '').split('@')[0].split(/[._-]+/).filter(Boolean)
+    .map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
+}
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
 function initials(name) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
-function ContactRow({ role, name, email, isAdmin, onSave }) {
+function ContactRow({ role, name, email, isAdmin, people, onSave }) {
   const [editing, setEditing] = useState(false)
   const [input, setInput] = useState({ name: '', email: '' })
   const [saving, setSaving] = useState(false)
@@ -35,7 +45,15 @@ function ContactRow({ role, name, email, isAdmin, onSave }) {
     e.preventDefault()
     setSaving(true)
     setError(null)
-    const err = await onSave(role.key, input.name.trim(), input.email.trim().toLowerCase())
+    const cleanEmail = input.email.trim().toLowerCase()
+    if (role.key !== 'psm' && cleanEmail && !EMAIL_RE.test(cleanEmail)) {
+      setSaving(false)
+      return setError('Enter a valid email address.')
+    }
+    const cleanName = role.key === 'psm' ? input.name.trim()
+      : !cleanEmail ? ''
+      : people.find(p => p.email === cleanEmail)?.name || nameFromEmail(cleanEmail)
+    const err = await onSave(role.key, cleanName, cleanEmail)
     setSaving(false)
     if (err) setError(err)
     else setEditing(false)
@@ -51,7 +69,7 @@ function ContactRow({ role, name, email, isAdmin, onSave }) {
             className="text-xs font-medium"
             style={{ color: 'var(--arctic)' }}
           >
-            {name ? 'Edit' : 'Set'}
+            {email ? 'Edit' : 'Set'}
           </button>
         )}
       </div>
@@ -73,15 +91,26 @@ function ContactRow({ role, name, email, isAdmin, onSave }) {
             </select>
           ) : (
             <>
-              <input value={input.name} onChange={e => setInput(i => ({ ...i, name: e.target.value }))} placeholder="Name" className={`${inputClass} w-36`} style={inputStyle} autoFocus />
-              <input type="email" value={input.email} onChange={e => setInput(i => ({ ...i, email: e.target.value }))} placeholder="name@bloomreach.com" className={`${inputClass} w-48`} style={inputStyle} />
+              <input
+                type="email"
+                list={`people-${role.key}`}
+                value={input.email}
+                onChange={e => setInput({ name: '', email: e.target.value })}
+                placeholder="name@bloomreach.com"
+                className={`${inputClass} w-60`}
+                style={inputStyle}
+                autoFocus
+              />
+              <datalist id={`people-${role.key}`}>
+                {people.map(p => <option key={p.email} value={p.email}>{p.name}</option>)}
+              </datalist>
             </>
           )}
           <button type="submit" disabled={saving} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
             {saving ? 'Saving…' : 'Save'}
           </button>
           <button type="button" onClick={() => setEditing(false)} className="text-xs px-1.5 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
-          {name && role.key !== 'psm' && (
+          {email && role.key !== 'psm' && (
             <button
               type="button"
               onClick={() => setInput({ name: '', email: '' })}
@@ -93,13 +122,21 @@ function ContactRow({ role, name, email, isAdmin, onSave }) {
           )}
           {error && <p className="basis-full text-xs" style={{ color: 'var(--rust)' }}>{error}</p>}
         </form>
-      ) : name ? (
+      ) : email || name ? (
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="inline-flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-semibold shrink-0" style={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--hairline)' }} aria-hidden="true">
-            {initials(name)}
+            {initials(name || nameFromEmail(email))}
           </span>
           <div className="min-w-0">
-            <div className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>{name}</div>
+            <div className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>
+              {name || nameFromEmail(email)}
+              {/* Only admins can list profiles, so only they get the badge */}
+              {isAdmin && role.key !== 'psm' && email && !people.some(p => p.email === email) && (
+                <span className="ml-2 text-[10.5px] font-medium px-1.5 py-0.5 rounded-full align-middle" style={{ background: 'var(--paper)', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
+                  Not on BLIMP yet
+                </span>
+              )}
+            </div>
             {email && <a href={`mailto:${email}`} className="font-mono text-[11.5px] truncate block hover:underline" style={{ color: 'var(--muted)' }}>{email}</a>}
           </div>
         </div>
@@ -111,6 +148,12 @@ function ContactRow({ role, name, email, isAdmin, onSave }) {
 }
 
 export default function AccountTeam({ impl, isAdmin, onChange }) {
+  const [people, setPeople] = useState([])
+
+  useEffect(() => {
+    if (isAdmin) listBloomreachPeople().then(res => setPeople(res.people || [])).catch(() => {})
+  }, [isAdmin])
+
   async function save(roleKey, name, email) {
     const res = await updateAccountContact(impl.id, roleKey, name, email)
     if (res.error) return res.error
@@ -127,6 +170,7 @@ export default function AccountTeam({ impl, isAdmin, onChange }) {
           name={impl[`${role.key}Name`]}
           email={impl[`${role.key}Email`]}
           isAdmin={isAdmin}
+          people={people}
           onSave={save}
         />
       ))}

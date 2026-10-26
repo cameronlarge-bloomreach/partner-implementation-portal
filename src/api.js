@@ -621,6 +621,20 @@ export async function updateBloomreachOrgLink(_token, implementationId, orgId, o
   return error ? fail(error) : { ok: true }
 }
 
+// Bloomreach staff with a BLIMP account — suggestions for the account team
+// fields. Admin-only (profiles RLS); everyone else just gets [].
+export async function listBloomreachPeople() {
+  const { data, error } = await supabase.from('profiles')
+    .select('email, first_name, last_name').ilike('email', '%@bloomreach.com').order('email')
+  if (error) return fail(error)
+  return {
+    people: (data || []).map(p => ({
+      email: p.email,
+      name: [p.first_name, p.last_name].filter(Boolean).join(' '),
+    })),
+  }
+}
+
 // role: 'psm' | 'csm' | 'am' — Partner Services, Customer Success or Account Manager.
 export async function updateAccountContact(implementationId, role, name, email) {
   if (!['psm', 'csm', 'am'].includes(role)) return { error: 'Unknown role.' }
