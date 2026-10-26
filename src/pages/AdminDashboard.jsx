@@ -1,54 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  getAllImplementations, addImplementation, getPendingSignups,
-  getStepDefinitions, DEFAULT_STEPS, IMPLEMENTATION_STATUSES, USAGE_METERS,
+  getAllImplementations, addImplementation, getPendingSignups, getStepDefinitions, DEFAULT_STEPS,
 } from '../api'
 import Navbar from '../components/Navbar'
-import RolloutRail from '../components/RolloutRail'
+import ImplCard from '../components/ImplCard'
+import { openRaidCount, isOverdue, usageIssue, viewOf } from '../implStatus'
 import ModalShell from '../components/ModalShell'
 import { SkeletonBar } from '../components/Skeleton'
-
-function stepsDone(map, keys) {
-  return keys.filter(k => (map || {})[k] === 'complete').length
-}
-
-function openRaidCount(impl) {
-  return (impl.raid || []).filter(r => r.status === 'Open' || r.status === 'In Progress').length
-}
-
-function daysUntil(date) {
-  if (!date) return null
-  const ms = new Date(date).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)
-  return Math.round(ms / 86400000)
-}
-
-function isOverdue(impl) {
-  const d = daysUntil(impl.planned_completion_date)
-  return d != null && d < 0
-}
-
-// Contracted billing meters are manual entry (no API source) — flag when
-// they're missing, look mismatched for the client's pricing model, or
-// haven't been touched in a while, so someone goes and checks them.
-const STALE_USAGE_DAYS = 60
-
-function usageIssue(impl) {
-  const required = USAGE_METERS[impl.pricingModel] || USAGE_METERS.profiles
-  const other = USAGE_METERS[impl.pricingModel === 'profiles' ? 'events' : 'profiles']
-  const metrics = impl.usageMetrics || {}
-
-  const missing = required.filter(m => metrics[m.key]?.value == null || metrics[m.key]?.limit == null)
-  if (missing.length) return `missing ${missing.map(m => m.label).join(', ')}`
-
-  const wrongModel = other.filter(m => metrics[m.key]?.value != null)
-  if (wrongModel.length) return `has ${impl.pricingModel === 'profiles' ? 'event' : 'profile'} data despite being on the ${impl.pricingModel} model`
-
-  const stalest = required.map(m => metrics[m.key]?.updatedAt).filter(Boolean).sort()[0]
-  if (stalest && (Date.now() - new Date(stalest)) / 86400000 > STALE_USAGE_DAYS) return `stale (last updated over ${STALE_USAGE_DAYS} days ago)`
-
-  return null
-}
 
 const ISSUES = {
   raid: { label: 'Open RAID', test: i => openRaidCount(i) > 0 },
@@ -62,85 +21,6 @@ const VIEWS = {
   attention: { label: 'Needs attention', subtitle: 'Active implementations with open RAID items, overdue dates or usage data to review' },
   pending: { label: 'Pending', subtitle: 'Set up in the portal, not yet signed with Bloomreach' },
   closed: { label: 'Closed', subtitle: 'Finished implementations' },
-}
-
-function viewOf(impl) {
-  return impl.status === 'pending' ? 'pending' : impl.status === 'complete' ? 'closed' : 'active'
-}
-
-// ---- Cards ----
-
-function Flag({ tone, children, title }) {
-  const styles = {
-    rust: { background: 'var(--rust-bg)', color: 'var(--rust)' },
-    amber: { background: '#FFFCE8', color: '#8A7A00' },
-    muted: { background: 'var(--paper)', color: 'var(--muted)' },
-  }
-  return (
-    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap" style={styles[tone]} title={title}>
-      {children}
-    </span>
-  )
-}
-
-function DueLabel({ impl }) {
-  const d = daysUntil(impl.planned_completion_date)
-  if (d == null) return null
-  const date = new Date(impl.planned_completion_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-  if (d < 0) return <Flag tone="rust" title={`Planned completion ${date}`}>Overdue {-d}d</Flag>
-  if (d <= 14) return <Flag tone="amber" title={`Planned completion ${date}`}>Due in {d}d</Flag>
-  return <Flag tone="muted">Due {date}</Flag>
-}
-
-function Rail({ label, done, total, color }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>{label}</span>
-        <span className="font-mono text-[11px]" style={{ color: 'var(--muted)' }}>{done}/{total}</span>
-      </div>
-      <RolloutRail total={total} completed={done} color={total && done === total ? 'var(--moss)' : color} size="sm" />
-    </div>
-  )
-}
-
-function ImplCard({ impl, tpKeys, qaKeys, showPartner, index = 0 }) {
-  const view = viewOf(impl)
-  const openRaid = openRaidCount(impl)
-  const usageProblem = view === 'active' && usageIssue(impl)
-  const status = IMPLEMENTATION_STATUSES[impl.status] ?? IMPLEMENTATION_STATUSES.active
-
-  return (
-    <Link
-      to={`/admin/implementation/${impl.id}`}
-      className="impl-card pressable card-enter flex flex-col bg-white rounded-2xl p-4"
-      style={{ border: '1px solid var(--hairline)', '--i': Math.min(index, 10) }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[14.5px] font-semibold truncate" style={{ color: 'var(--ink)' }}>{impl.client_name}</div>
-          {showPartner && <div className="text-xs truncate" style={{ color: 'var(--muted)' }}>{impl.partner_name}</div>}
-        </div>
-        {view === 'active'
-          ? <DueLabel impl={impl} />
-          : <Flag tone="muted"><span style={{ color: status.color }}>{status.label}</span></Flag>}
-      </div>
-
-      {view === 'active' && (openRaid > 0 || usageProblem) && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {openRaid > 0 && <Flag tone="rust">{openRaid} open RAID</Flag>}
-          {usageProblem && <Flag tone="amber" title={`Usage data ${usageProblem}`}>Usage data</Flag>}
-        </div>
-      )}
-
-      {view !== 'pending' && (
-        <div className="space-y-2.5 mt-auto pt-4">
-          <Rail label="Rollout" done={stepsDone(impl.touchPoints, tpKeys)} total={tpKeys.length} color="var(--gold)" />
-          <Rail label="QA" done={stepsDone(impl.qaSteps, qaKeys)} total={qaKeys.length} color="var(--arctic)" />
-        </div>
-      )}
-    </Link>
-  )
 }
 
 // ---- Sidebar ----
@@ -505,7 +385,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 ) : (
                   <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
                     {visible.map((impl, i) => (
-                      <ImplCard key={impl.id} impl={impl} tpKeys={tpKeys} qaKeys={qaKeys} showPartner={!partner} index={i} />
+                      <ImplCard key={impl.id} impl={impl} to={`/admin/implementation/${impl.id}`} tpKeys={tpKeys} qaKeys={qaKeys} showPartner={!partner} index={i} />
                     ))}
                   </div>
                 )}
