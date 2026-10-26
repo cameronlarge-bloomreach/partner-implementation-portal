@@ -7,6 +7,7 @@ import {
 import Navbar from '../components/Navbar'
 import ModalShell from '../components/ModalShell'
 import { SkeletonBar } from '../components/Skeleton'
+import { SidebarPanel } from '../components/Sidebar'
 
 // Access is granted per partner (every implementation of theirs, now and
 // future) or as a Bloomreach role. Single-implementation grants still work
@@ -649,7 +650,7 @@ export default function Permissions({ userInfo, onLogout }) {
             </div>
 
             {/* Sidebar */}
-            <aside className="hidden md:block md:sticky md:top-6 bg-white rounded-2xl p-3" style={{ border: '1px solid var(--hairline)' }}>
+            <SidebarPanel>
               <input
                 type="search"
                 value={search}
@@ -664,7 +665,7 @@ export default function Permissions({ userInfo, onLogout }) {
                 <NavItem active={group === 'team'} onClick={() => setGroup('team')} label="Bloomreach team" count={team.length} />
               </nav>
               <div className="text-[11px] font-semibold uppercase tracking-widest px-3 mt-4 mb-1.5" style={{ color: 'var(--muted)' }}>Partners</div>
-              <nav className="space-y-0.5 max-h-[50vh] overflow-y-auto">
+              <nav className="space-y-0.5">
                 {partnersWithPeople.map(p => (
                   <NavItem key={p} active={group === `partner:${p}`} onClick={() => setGroup(`partner:${p}`)} label={p} count={peopleByPartner[p].length} />
                 ))}
@@ -684,7 +685,7 @@ export default function Permissions({ userInfo, onLogout }) {
                   {showEmptyPartners ? 'Hide partners with no one' : `+ ${emptyPartners.length} partners with no one yet`}
                 </button>
               )}
-            </aside>
+            </SidebarPanel>
 
             {/* Main */}
             <section>

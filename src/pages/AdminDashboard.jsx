@@ -8,6 +8,7 @@ import ImplCard from '../components/ImplCard'
 import { openRaidCount, isOverdue, usageIssue, viewOf, nameFromEmail, teamEmails } from '../implStatus'
 import ModalShell from '../components/ModalShell'
 import { SkeletonBar } from '../components/Skeleton'
+import { SidebarPanel, CollapsibleList } from '../components/Sidebar'
 
 const ISSUES = {
   raid: { label: 'Open RAID', test: i => openRaidCount(i) > 0 },
@@ -377,7 +378,7 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               </div>
 
               {/* Sidebar */}
-              <aside className="no-print hidden md:block md:sticky md:top-6 bg-white rounded-2xl p-3" style={{ border: '1px solid var(--hairline)' }}>
+              <SidebarPanel>
                 <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search clients or partners…"
                   className="w-full rounded-lg px-3 py-2 text-[13px] focus:outline-none mb-2" style={{ border: '1px solid var(--hairline)', background: 'var(--paper)' }} />
                 <nav className="space-y-0.5">
@@ -389,10 +390,12 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                 <div className="text-[11px] font-semibold uppercase tracking-widest px-3 mt-4 mb-1.5" style={{ color: 'var(--muted)' }}>
                   Partners · {VIEWS[view].label.toLowerCase()}
                 </div>
-                <nav className="space-y-0.5 max-h-[50vh] overflow-y-auto">
-                  {partnerNames.map(p => (
-                    <NavItem key={p} active={partner === p} onClick={() => setPartner(partner === p ? null : p)} label={p} count={partnerCounts[p]} />
-                  ))}
+                <nav className="space-y-0.5">
+                  <CollapsibleList items={partnerNames} limit={8} pinned={p => p === partner} noun="partners">
+                    {p => (
+                      <NavItem key={p} active={partner === p} onClick={() => setPartner(partner === p ? null : p)} label={p} count={partnerCounts[p]} />
+                    )}
+                  </CollapsibleList>
                   {partnerNames.length === 0 && <p className="text-xs px-3 py-1" style={{ color: 'var(--muted)' }}>None in this view.</p>}
                 </nav>
                 {(personEmails.length > 0 || nobodyCount > 0) && (
@@ -401,23 +404,25 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
                       Assigned to
                     </div>
                     <nav className="space-y-0.5">
-                      {personEmails.map(e => (
-                        <NavItem
-                          key={e}
-                          active={person === e}
-                          onClick={() => setPerson(person === e ? null : e)}
-                          label={personLabel(e)}
-                          count={personCounts[e]}
-                          icon={<MiniAvatar name={personNames[e]} photo={avatars[e]?.photoUrl} />}
-                        />
-                      ))}
+                      <CollapsibleList items={personEmails} limit={6} pinned={e => e === person || e === selfEmail} noun="people">
+                        {e => (
+                          <NavItem
+                            key={e}
+                            active={person === e}
+                            onClick={() => setPerson(person === e ? null : e)}
+                            label={personLabel(e)}
+                            count={personCounts[e]}
+                            icon={<MiniAvatar name={personNames[e]} photo={avatars[e]?.photoUrl} />}
+                          />
+                        )}
+                      </CollapsibleList>
                       {nobodyCount > 0 && (
                         <NavItem active={person === NOBODY} onClick={() => setPerson(person === NOBODY ? null : NOBODY)} label="Nobody assigned" count={nobodyCount} />
                       )}
                     </nav>
                   </>
                 )}
-              </aside>
+              </SidebarPanel>
 
               {/* Main */}
               <section>
