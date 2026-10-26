@@ -8,16 +8,17 @@ import {
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink,
   updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
   CONTRACT_ALLOWANCES, extractContractLimits,
-  IMPLEMENTATION_STATUSES,
+  IMPLEMENTATION_STATUSES, listStaffAvatars,
 } from '../api'
 import Navbar from '../components/Navbar'
 import StepsManager from '../components/StepsManager'
 import AccountTeam from '../components/AccountTeam'
 import ImplementationDocuments from '../components/ImplementationDocuments'
-import ProgressRing from '../components/ProgressRing'
 import QAWorkbookModal from '../components/QAWorkbookModal'
 import RaiseTicketModal from '../components/RaiseTicketModal'
 import ContractReviewModal from '../components/ContractReviewModal'
+import { TeamStack } from '../components/ImplCard'
+import RolloutRail from '../components/RolloutRail'
 import { QA_WORKBOOKS } from '../qaWorkbooks'
 
 const DATE_FIELDS = [
@@ -63,7 +64,6 @@ const RAID_STATUS_STYLE = {
   Resolved: { background: 'var(--moss-bg)', color: 'var(--moss)' },
   Closed: { background: '#f2f1ec', color: 'var(--muted)' },
 }
-const STATUS_DOT = { complete: 'var(--moss)', in_progress: 'var(--arctic)', not_started: 'var(--hairline)', not_required: '#c9b8e8' }
 
 const SCENARIO_STATUS_STYLE = {
   active: { background: 'var(--moss-bg)', color: 'var(--moss)' },
@@ -95,26 +95,103 @@ function Card({ children, className = '', style = {} }) {
   )
 }
 
-function SectionTitle({ children, pill }) {
+// Card with a title row (title, optional count/subtitle, optional action on
+// the right) — the building block for both tabs.
+function Section({ title, subtitle, action, children, className = '' }) {
   return (
-    <div className="flex items-center justify-between mb-3.5">
-      <h2 className="text-[13px] font-semibold uppercase tracking-wide" style={{ color: 'var(--ink)' }}>{children}</h2>
-      {pill}
+    <Card className={className}>
+      <div className="flex items-start justify-between gap-3 mb-3.5">
+        <div className="min-w-0">
+          <h2 className="font-display text-[15px] font-semibold" style={{ color: 'var(--ink)' }}>{title}</h2>
+          {subtitle && <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </Card>
+  )
+}
+
+function Pill({ tone = 'muted', children, title }) {
+  const tones = {
+    muted: { background: 'var(--paper)', color: 'var(--muted)', border: '1px solid var(--hairline)' },
+    rust: { background: 'var(--rust-bg)', color: 'var(--rust)', border: '1px solid transparent' },
+    amber: { background: '#FFFCE8', color: '#8A7A00', border: '1px solid transparent' },
+    moss: { background: 'var(--moss-bg)', color: 'var(--moss)', border: '1px solid transparent' },
+  }
+  return (
+    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap" style={tones[tone]} title={title}>
+      {children}
+    </span>
+  )
+}
+
+// Header stat tile: big number, label, optional rail or hint underneath.
+function Stat({ label, value, sub, tone, children }) {
+  return (
+    <div className="bg-white rounded-2xl px-4 py-3.5 flex flex-col" style={{ border: '1px solid var(--hairline)' }}>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xs" style={{ color: 'var(--muted)' }}>{label}</span>
+        {sub && <span className="font-mono text-[11px]" style={{ color: 'var(--muted)' }}>{sub}</span>}
+      </div>
+      <div className="font-mono text-[22px] font-semibold leading-tight mt-1"
+        style={{ color: tone === 'rust' ? 'var(--rust)' : tone === 'moss' ? 'var(--moss)' : 'var(--ink)' }}>
+        {value}
+      </div>
+      {children && <div className="mt-2">{children}</div>}
     </div>
   )
 }
 
+const STEP_STATUS = {
+  not_started: { label: 'Not started', bg: 'var(--paper)', color: 'var(--muted)', border: 'var(--hairline)' },
+  in_progress: { label: 'In progress', bg: '#e7f4fb', color: '#017aaa', border: '#cbe7f5' },
+  complete: { label: 'Complete', bg: 'var(--moss-bg)', color: 'var(--moss)', border: '#cfe6d7' },
+  not_required: { label: 'Not required', bg: '#f2ecfb', color: '#6b3fa0', border: '#e2d6f5' },
+}
+
+// Status as a coloured pill that is also the select (read-only users just
+// see the pill).
 function StatusSelect({ value, onChange, disabled }) {
+  const meta = STEP_STATUS[value] || STEP_STATUS.not_started
   return (
     <select value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-      className="text-xs rounded-lg px-2 py-1 focus:outline-none disabled:opacity-40 bg-white cursor-pointer"
-      style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
-      <option value="not_started">Not Started</option>
-      <option value="in_progress">In Progress</option>
-      <option value="complete">Complete</option>
-      <option value="not_required">Not Required</option>
+      className="status-pill text-[11.5px] font-semibold rounded-full pl-2.5 pr-6 py-1 focus:outline-none cursor-pointer disabled:cursor-default"
+      style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.border}` }}>
+      {Object.entries(STEP_STATUS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
     </select>
   )
+}
+
+// Small segmented control (billing model, region, status, RAID filter).
+function SegButtons({ options, value, onPick, disabled }) {
+  return (
+    <div className="inline-flex rounded-lg p-0.5" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
+      {options.map(([v, label]) => (
+        <button key={v} type="button" disabled={disabled} onClick={() => onPick(v)}
+          className="text-xs font-medium px-3 py-1 rounded-md transition-colors disabled:opacity-60"
+          style={value === v ? { background: 'var(--ink)', color: '#fff' } : { color: 'var(--ink)' }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function daysFromToday(val) {
+  if (!val) return null
+  const d = new Date(val)
+  if (isNaN(d)) return null
+  return Math.round((new Date(d).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86400000)
+}
+
+// "in 12 days" / "3 days ago" / "today"
+function relativeDays(n) {
+  if (n === null) return ''
+  if (n === 0) return 'today'
+  const abs = Math.abs(n)
+  const unit = abs === 1 ? 'day' : 'days'
+  return n > 0 ? `in ${abs} ${unit}` : `${abs} ${unit} ago`
 }
 
 // Edits one billing meter: current usage + contracted limit, with a utilisation bar.
@@ -352,6 +429,8 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const [extractError, setExtractError] = useState(null)
   const [review, setReview] = useState(null) // { doc, metrics } once extraction returns
   const [expandedNote, setExpandedNote] = useState(null)
+  const [raidFilter, setRaidFilter] = useState('open') // 'open' | 'all'
+  const [avatars, setAvatars] = useState({})
   const [showAddNote, setShowAddNote] = useState(false)
   const [newNote, setNewNote] = useState(EMPTY_NOTE)
   const [addingNote, setAddingNote] = useState(false)
@@ -379,6 +458,9 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
     }).catch(() => setError('Failed to load this implementation. Please refresh.'))
       .finally(() => setLoading(false))
   }, [id, credential])
+
+  // Account-team photos for the header (RLS: internal users only, else {}).
+  useEffect(() => { listStaffAvatars().then(setAvatars).catch(() => {}) }, [])
 
   function patchImpl(fields) {
     setImpl(prev => ({ ...prev, ...fields }))
@@ -615,596 +697,572 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const openRaid = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress').length
 
   const backHref = canViewAll ? '/admin' : (userInfo?.implementations?.length > 1 ? '/select' : null)
-  const backLabel = canViewAll ? '← All partners' : '← My implementations'
+  const backLabel = canViewAll ? '← All implementations' : '← My implementations'
 
   const tabs = [
     { key: 'overview', label: 'Overview' },
     ...(canViewAll ? [{ key: 'internal', label: 'Internal' }] : []),
   ]
 
+  const statusMeta = IMPLEMENTATION_STATUSES[impl.status] ?? IMPLEMENTATION_STATUSES.active
+  const dueIn = impl.actual_completion_date ? null : daysFromToday(impl.planned_completion_date)
+  const openRaidItems = raidItems.filter(r => r.status === 'Open' || r.status === 'In Progress')
+  const raidShown = raidFilter === 'open' && openRaidItems.length > 0 ? openRaidItems : raidItems
+  const notes = impl.meetingNotes || []
+  const scenarios = impl.scenarios || []
+  const activeScenarios = scenarios.filter(sc => (sc.status || '').toLowerCase() === 'active').length
+
+  const smallBtn = 'text-xs font-semibold px-3 py-1.5 rounded-lg'
+  const goldBtn = { background: 'var(--gold)', color: '#000' }
+  const inputCls = 'w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none bg-white'
+  const inputStyle = { border: '1px solid var(--hairline)' }
+
+  const raidList = (
+    raidShown.length === 0 ? (
+      <p className="text-sm py-6 text-center" style={{ color: 'var(--muted)' }}>No RAID items logged yet.</p>
+    ) : (
+      <div className="divide-y divide-[var(--hairline)]">
+        {raidShown.map(item => (
+          <div key={item.id} className="py-3 first:pt-0 last:pb-0">
+            {editingRaid === item.id ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={editRaidData.type} onChange={e => setEditRaidData(d => ({ ...d, type: e.target.value }))} className={inputCls} style={inputStyle}>
+                    {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
+                  </select>
+                  <select value={editRaidData.status} onChange={e => setEditRaidData(d => ({ ...d, status: e.target.value }))} className={inputCls} style={inputStyle}>
+                    {RAID_STATUSES.map(st => <option key={st}>{st}</option>)}
+                  </select>
+                </div>
+                <input type="text" value={editRaidData.title} onChange={e => setEditRaidData(d => ({ ...d, title: e.target.value }))} className={inputCls} style={inputStyle} />
+                <textarea value={editRaidData.description} onChange={e => setEditRaidData(d => ({ ...d, description: e.target.value }))} rows={2} className={`${inputCls} resize-none`} style={inputStyle} />
+                <input type="text" value={editRaidData.owner} onChange={e => setEditRaidData(d => ({ ...d, owner: e.target.value }))} placeholder="Owner" className={inputCls} style={inputStyle} />
+                <div className="flex gap-2">
+                  <button onClick={() => handleUpdateRaid(item.id)} className={smallBtn} style={goldBtn}>Save</button>
+                  <button onClick={() => setEditingRaid(null)} className="text-xs px-2 py-1" style={{ color: 'var(--muted)' }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3">
+                <span className="w-1 self-stretch rounded-full shrink-0" style={{ background: (RAID_TYPE_STYLE[item.type] || {}).color || 'var(--hairline)' }} aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{item.title}</p>
+                    {!isViewer && (
+                      <div className="flex gap-2.5 shrink-0">
+                        <button onClick={() => { setEditingRaid(item.id); setEditRaidData({ type: item.type, title: item.title, description: item.description, status: item.status, owner: item.owner }) }}
+                          className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>Edit</button>
+                        <button onClick={() => handleDeleteRaid(item.id)} className="text-xs" style={{ color: 'var(--rust)' }}>Delete</button>
+                      </div>
+                    )}
+                  </div>
+                  {item.description && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>{item.description}</p>}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={RAID_TYPE_STYLE[item.type] || {}}>{item.type}</span>
+                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={RAID_STATUS_STYLE[item.status] || {}}>{item.status}</span>
+                    {(item.owner || item.raised_date) && (
+                      <span className="text-[11.5px] ml-1" style={{ color: 'var(--muted)' }}>
+                        {item.owner}{item.owner && item.raised_date && ' · '}{item.raised_date && formatDate(item.raised_date)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    )
+  )
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--paper)' }}>
       <Navbar userInfo={userInfo} onLogout={onLogout} title={isAdmin ? 'Admin — Partner Portal' : isSDC ? 'SDC — Partner Portal' : impl.isAccountTeam ? 'Account team — Partner Portal' : isViewer ? 'Viewer — Partner Portal' : 'Partner Portal'} />
 
-      <div className="max-w-[1120px] mx-auto px-7 py-7">
-        {backHref && <Link to={backHref} className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>{backLabel}</Link>}
+      <div className="max-w-[1180px] mx-auto px-4 sm:px-7 py-7">
+        {backHref && <Link to={backHref} className="text-xs font-medium hover:underline" style={{ color: 'var(--arctic-dark)' }}>{backLabel}</Link>}
 
-        {/* Hero card */}
-        <div className="bg-white rounded-[20px] p-6 mt-3.5 mb-5" style={{ border: '1px solid var(--hairline)' }}>
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-5">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-[11.5px] font-semibold uppercase tracking-widest" style={{ color: 'var(--arctic)' }}>{impl.partner_name}</span>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: IMPLEMENTATION_STATUSES[impl.status]?.bg ?? IMPLEMENTATION_STATUSES.active.bg, color: IMPLEMENTATION_STATUSES[impl.status]?.color ?? IMPLEMENTATION_STATUSES.active.color }}>
-                  {IMPLEMENTATION_STATUSES[impl.status]?.label ?? IMPLEMENTATION_STATUSES.active.label}
-                </span>
-              </div>
-              <h1 className="font-display text-[26px] font-semibold" style={{ color: 'var(--ink)' }}>{impl.client_name}</h1>
-              <p className="text-[13px] mt-1.5" style={{ color: 'var(--muted)' }}>{(impl.accessEmails || []).join(', ') || 'No partner access granted yet'}</p>
+        {/* Header */}
+        <div className="flex flex-wrap items-end justify-between gap-4 mt-3 mb-5">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[11.5px] font-semibold uppercase tracking-widest" style={{ color: 'var(--arctic-dark)' }}>{impl.partner_name}</span>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: statusMeta.bg, color: statusMeta.color, border: '1px solid var(--hairline)' }}>
+                {statusMeta.label}
+              </span>
             </div>
-            <div className="flex items-center gap-7">
-              <div className="flex flex-col items-center gap-1">
-                <div className="relative">
-                  <ProgressRing pct={tpPct} size={64} color="var(--gold)" />
-                  <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-semibold" style={{ color: 'var(--ink)' }}>{tpPct}%</span>
-                </div>
-                <span className="text-[11.5px]" style={{ color: 'var(--muted)' }}>Progress</span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="relative">
-                  <ProgressRing pct={qaPct} size={64} color="var(--arctic)" />
-                  <span className="absolute inset-0 flex items-center justify-center font-mono text-sm font-semibold" style={{ color: 'var(--arctic)' }}>{qaPct}%</span>
-                </div>
-                <span className="text-[11.5px]" style={{ color: 'var(--muted)' }}>QA</span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <div className="w-14 h-14 rounded-full flex items-center justify-center font-mono text-lg font-semibold"
-                  style={{ background: openRaid > 0 ? 'var(--rust-bg)' : 'var(--moss-bg)', color: openRaid > 0 ? 'var(--rust)' : 'var(--moss)' }}>
-                  {openRaid}
-                </div>
-                <span className="text-[11.5px]" style={{ color: 'var(--muted)' }}>Open RAID</span>
-              </div>
-            </div>
+            <h1 className="font-display text-[28px] font-semibold leading-tight" style={{ color: 'var(--ink)' }}>{impl.client_name}</h1>
           </div>
+          {canViewAll && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs" style={{ color: 'var(--muted)' }}>Account team</span>
+              {impl.psmEmail || impl.csmEmail || impl.amEmail
+                ? <TeamStack impl={impl} avatars={avatars} size={34} />
+                : <span className="text-xs" style={{ color: 'var(--muted)' }}>Not set</span>}
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-3 mb-6 grid-cols-2 lg:grid-cols-4">
+          <Stat label="Rollout" value={`${tpPct}%`} sub={`${tpCompleted}/${tpRequired.length}`} tone={tpPct === 100 ? 'moss' : undefined}>
+            <RolloutRail total={tpRequired.length} completed={tpCompleted} color={tpPct === 100 ? 'var(--moss)' : 'var(--gold)'} size="sm" />
+          </Stat>
+          <Stat label="QA peer reviews" value={`${qaPct}%`} sub={`${qaCompleted}/${qaRequired.length}`} tone={qaPct === 100 ? 'moss' : undefined}>
+            <RolloutRail total={qaRequired.length} completed={qaCompleted} color={qaPct === 100 ? 'var(--moss)' : 'var(--arctic)'} size="sm" />
+          </Stat>
+          <Stat label="Open RAID items" value={openRaid} tone={openRaid > 0 ? 'rust' : 'moss'} sub={`${raidItems.length} total`}>
+            <p className="text-[11.5px]" style={{ color: 'var(--muted)' }}>{openRaid > 0 ? 'Needs follow-up' : 'All clear'}</p>
+          </Stat>
+          <Stat
+            label={impl.actual_completion_date ? 'Completed' : 'Planned completion'}
+            value={formatDate(impl.actual_completion_date || impl.planned_completion_date)}
+            tone={dueIn !== null && dueIn < 0 ? 'rust' : undefined}
+          >
+            {dueIn !== null
+              ? <Pill tone={dueIn < 0 ? 'rust' : dueIn <= 14 ? 'amber' : 'muted'}>{dueIn < 0 ? `Overdue ${-dueIn}d` : relativeDays(dueIn)}</Pill>
+              : <p className="text-[11.5px]" style={{ color: 'var(--muted)' }}>{impl.actual_completion_date ? 'Done' : 'No date set'}</p>}
+          </Stat>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-0.5 bg-white rounded-xl p-1 mb-5 w-fit" style={{ border: '1px solid var(--hairline)' }}>
-          {tabs.map(t => (
-            <button key={t.key} onClick={() => setActiveTab(t.key)}
-              className="text-[13px] font-medium px-4 py-2 rounded-[9px] transition-colors"
-              style={activeTab === t.key ? { background: 'var(--gold)', color: '#000' } : { background: 'transparent', color: 'var(--muted)' }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {tabs.length > 1 && (
+          <div className="inline-flex rounded-xl p-1 mb-5 bg-white" style={{ border: '1px solid var(--hairline)' }} role="tablist">
+            {tabs.map(t => (
+              <button key={t.key} role="tab" aria-selected={activeTab === t.key} onClick={() => setActiveTab(t.key)}
+                className="text-[13px] font-medium px-4 py-1.5 rounded-lg transition-colors"
+                style={activeTab === t.key ? { background: 'var(--ink)', color: '#fff' } : { color: 'var(--ink)' }}>
+                {t.label}
+                {t.key === 'internal' && <span className="ml-1.5 text-[11px]" style={{ opacity: 0.6 }}>Bloomreach only</span>}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Overview */}
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {!isViewer && (<Card>
-              <SectionTitle>Partner Access</SectionTitle>
-              <div className="flex flex-wrap gap-1.5">
-                {(impl.accessEmails || []).length === 0 ? (
-                  <span className="text-sm" style={{ color: 'var(--muted)' }}>No partner access granted yet.</span>
-                ) : impl.accessEmails.map(email => (
-                  <span key={email} className="text-xs font-medium px-3 py-1.5 rounded-full" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
-                    {email}
-                  </span>
-                ))}
-              </div>
-            </Card>)}
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
+            <div className="flex flex-col gap-5 min-w-0">
+              <Section title="Rollout" subtitle={`${tpCompleted} of ${tpRequired.length} touch points complete`}>
+                <ol className="divide-y divide-[var(--hairline)]">
+                  {tpList.map((item, i) => {
+                    const status = tp[item.key] || 'not_started'
+                    return (
+                      <li key={item.key} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-semibold shrink-0"
+                            style={status === 'complete'
+                              ? { background: 'var(--moss)', color: '#fff' }
+                              : { background: 'var(--paper)', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
+                            {status === 'complete' ? '✓' : i + 1}
+                          </span>
+                          <span className="text-[13.5px] truncate" style={{ color: status === 'not_required' ? 'var(--muted)' : 'var(--ink)', textDecoration: status === 'not_required' ? 'line-through' : 'none' }}>{item.label}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {savingStep === item.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
+                          <StatusSelect value={status} onChange={v => handleTPChange(item.key, v)} disabled={savingStep === item.key || isSDC || isViewer} />
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </Section>
 
-            <Card>
-              {!isViewer && <SectionTitle>Scope of Work</SectionTitle>}
-              {!isViewer && <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={false} onChange={() => {}} />}
-              {canViewAll && (
-                <p className="text-xs mt-2.5" style={{ color: 'var(--muted)' }}>
-                  Slack channel: <span className="font-mono">{impl.slackChannelId || 'Not set'}</span>
-                </p>
-              )}
-            </Card>
-
-            <Card className="lg:col-span-2">
-              <SectionTitle>Key Dates</SectionTitle>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-                {DATE_FIELDS.map(f => (
-                  <div key={f.key}>
-                    <p className="text-[11.5px] mb-0.5" style={{ color: 'var(--muted)' }}>{f.label}</p>
-                    <p className="font-mono text-sm" style={{ color: 'var(--ink)' }}>{formatDate(impl[f.key])}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card className="lg:col-span-2">
-              <SectionTitle>Consultant Hours</SectionTitle>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <HoursRow label="Implementation-Activation Services" hint="partner consultant hours purchased" hours={impl.workfrontHours?.activationServices} />
-                <HoursRow label="Activation Support" hint="Bloomreach PSM time" hours={impl.workfrontHours?.activationSupport} />
-                {impl.workfrontHours?.consultingServices && (
-                  <HoursRow label="Additional Consulting" hint="consultancy hours on top of activation services" hours={impl.workfrontHours.consultingServices} />
-                )}
-              </div>
-              {impl.workfrontHours?.syncedAt && (
-                <p className="text-[11px] mt-3.5" style={{ color: 'var(--muted)' }}>From Workfront · synced {formatDateTime(impl.workfrontHours.syncedAt)}</p>
-              )}
-            </Card>
-
-            <Card>
-              <SectionTitle pill={
-                <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full text-black" style={{ background: 'var(--gold)' }}>{tpPct}%</span>
-              }>Touch Points</SectionTitle>
-              <div>
-                {tpList.map(item => {
-                  const status = tp[item.key] || 'not_started'
-                  return (
-                    <div key={item.key} className="flex items-center justify-between py-2.5 border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: STATUS_DOT[status] }} />
-                        <span className="text-[13.5px]" style={{ color: 'var(--ink)' }}>{item.label}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {savingStep === item.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                        <StatusSelect value={status} onChange={v => handleTPChange(item.key, v)} disabled={savingStep === item.key || isSDC || isViewer} />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </Card>
-
-            <Card>
-              <SectionTitle pill={
-                <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: qaPct === 100 ? 'var(--moss-bg)' : 'var(--arctic)', color: qaPct === 100 ? 'var(--moss)' : '#fff' }}>{qaPct}%</span>
-              }>QA Peer Reviews</SectionTitle>
-              <p className="text-[11.5px] -mt-2.5 mb-2" style={{ color: 'var(--muted)' }}>Click a step to open the SDC review workbook.</p>
-              <div>
-                {qaList.map((step, i) => {
-                  const status = qa[step.key] || 'not_started'
-                  return (
-                    <div key={step.key} className="border-b last:border-0" style={{ borderColor: 'var(--paper)' }}>
-                      <div className="flex items-center justify-between py-2.5">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="font-mono text-xs w-4 flex-shrink-0" style={{ color: 'var(--muted)' }}>{i + 1}</span>
-                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: STATUS_DOT[status] }} />
+              <Section title="QA peer reviews" subtitle={`${qaCompleted} of ${qaRequired.length} complete · open a step for its SDC review workbook`}>
+                <ol className="divide-y divide-[var(--hairline)]">
+                  {qaList.map((step, i) => {
+                    const status = qa[step.key] || 'not_started'
+                    return (
+                      <li key={step.key} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-semibold shrink-0"
+                            style={status === 'complete'
+                              ? { background: 'var(--moss)', color: '#fff' }
+                              : { background: 'var(--paper)', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
+                            {status === 'complete' ? '✓' : i + 1}
+                          </span>
                           {QA_WORKBOOKS[step.key] ? (
-                            <button onClick={() => openWorkbook(step.key)}
-                              className="text-[13.5px] truncate text-left hover:underline underline-offset-2" style={{ color: 'var(--ink)' }}>
-                              {step.label}
+                            <button onClick={() => openWorkbook(step.key)} className="text-[13.5px] truncate text-left hover:underline underline-offset-2" style={{ color: 'var(--ink)' }}>
+                              {step.label} <span style={{ color: 'var(--arctic)' }}>›</span>
                             </button>
                           ) : (
                             <span className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>{step.label}</span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                        <div className="flex items-center gap-2.5 shrink-0">
                           {canViewAll && QA_WORKBOOKS[step.key] && (isViewer ? !!raisedTickets[step.key] : true) && (
                             raisedTickets[step.key] ? (
-                              <a href={raisedTickets[step.key].url} target="_blank" rel="noopener noreferrer"
-                                className="text-xs font-medium" style={{ color: 'var(--moss)' }}>
-                                Ticket ↗
-                              </a>
+                              <a href={raisedTickets[step.key].url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium" style={{ color: 'var(--moss)' }}>Ticket ↗</a>
                             ) : (
-                              <button onClick={() => setRaisingTicketStep(step.key)} className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>
-                                Raise ticket
-                              </button>
+                              <button onClick={() => setRaisingTicketStep(step.key)} className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>Raise ticket</button>
                             )
                           )}
                           {savingStep === step.key && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}
                           <StatusSelect value={status} onChange={v => handleQAChange(step.key, v)} disabled={savingStep === step.key || isSDC || isViewer} />
                         </div>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </Section>
+
+              <Section
+                title="RAID log"
+                subtitle={`${raidItems.length} item${raidItems.length !== 1 ? 's' : ''}${openRaid > 0 ? ` · ${openRaid} open` : ''} — risks, actions, issues and dependencies`}
+                action={
+                  <div className="flex items-center gap-2 shrink-0">
+                    {openRaidItems.length > 0 && openRaidItems.length < raidItems.length && (
+                      <SegButtons options={[['open', `Open ${openRaidItems.length}`], ['all', `All ${raidItems.length}`]]} value={raidFilter} onPick={setRaidFilter} />
+                    )}
+                    {!isViewer && <button onClick={() => setShowAddRaid(v => !v)} className={smallBtn} style={goldBtn}>+ Add</button>}
+                  </div>
+                }
+              >
+                {showAddRaid && !isViewer && (
+                  <form onSubmit={handleAddRaid} className="mb-4 p-3 rounded-xl space-y-2" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
+                    <div className="grid grid-cols-2 gap-2">
+                      <select value={newRaid.type} onChange={e => setNewRaid(r => ({ ...r, type: e.target.value }))} className={inputCls} style={inputStyle}>
+                        {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
+                      </select>
+                      <select value={newRaid.status} onChange={e => setNewRaid(r => ({ ...r, status: e.target.value }))} className={inputCls} style={inputStyle}>
+                        {RAID_STATUSES.map(st => <option key={st}>{st}</option>)}
+                      </select>
+                    </div>
+                    <input type="text" required value={newRaid.title} onChange={e => setNewRaid(r => ({ ...r, title: e.target.value }))} placeholder="Title *" className={inputCls} style={inputStyle} />
+                    <textarea value={newRaid.description} onChange={e => setNewRaid(r => ({ ...r, description: e.target.value }))} rows={2} placeholder="Description" className={`${inputCls} resize-none`} style={inputStyle} />
+                    <input type="text" value={newRaid.owner} onChange={e => setNewRaid(r => ({ ...r, owner: e.target.value }))} placeholder="Owner" className={inputCls} style={inputStyle} />
+                    <div className="flex gap-2">
+                      <button type="submit" disabled={addingRaid} className={`${smallBtn} disabled:opacity-50`} style={goldBtn}>{addingRaid ? 'Adding…' : 'Add'}</button>
+                      <button type="button" onClick={() => { setShowAddRaid(false); setNewRaid(EMPTY_RAID) }} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
+                    </div>
+                  </form>
+                )}
+                {raidList}
+              </Section>
+            </div>
+
+            <div className="flex flex-col gap-5 min-w-0">
+              <Section title="Key dates">
+                <dl className="divide-y divide-[var(--hairline)]">
+                  {DATE_FIELDS.map(f => {
+                    const d = daysFromToday(impl[f.key])
+                    const isPlanned = f.key.startsWith('planned')
+                    const actualKey = f.key === 'planned_completion_date' ? 'actual_completion_date' : f.key === 'planned_go_live_date' ? 'actual_time_to_live' : null
+                    const overdue = isPlanned && d !== null && d < 0 && !(actualKey && impl[actualKey])
+                    return (
+                      <div key={f.key} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                        <dt className="text-[13px]" style={{ color: 'var(--muted)' }}>{f.label}</dt>
+                        <dd className="text-right">
+                          <span className="font-mono text-[13px]" style={{ color: impl[f.key] ? 'var(--ink)' : 'var(--muted)' }}>{formatDate(impl[f.key])}</span>
+                          {d !== null && (
+                            <span className="block text-[11px]" style={{ color: overdue ? 'var(--rust)' : 'var(--muted)' }}>{overdue ? `overdue ${-d}d` : relativeDays(d)}</span>
+                          )}
+                        </dd>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </Card>
+                    )
+                  })}
+                </dl>
+              </Section>
 
-            <Card className="lg:col-span-2">
-              <SectionTitle pill={isViewer ? undefined :
-                <button onClick={() => setShowAddRaid(v => !v)} className="text-xs font-semibold px-3.5 py-1.5 rounded-[9px] text-black" style={{ background: 'var(--gold)' }}>+ Add</button>
-              }>RAID Log — {raidItems.length} item{raidItems.length !== 1 ? 's' : ''}{openRaid > 0 ? `, ${openRaid} open` : ''}</SectionTitle>
-
-              {showAddRaid && !isViewer && (
-                <form onSubmit={handleAddRaid} className="mb-4 p-3 rounded-xl space-y-2.5 text-sm" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
-                  <div className="grid grid-cols-2 gap-2">
-                    <select value={newRaid.type} onChange={e => setNewRaid(r => ({ ...r, type: e.target.value }))}
-                      className="w-full rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" style={{ border: '1px solid var(--hairline)' }}>
-                      {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
-                    </select>
-                    <select value={newRaid.status} onChange={e => setNewRaid(r => ({ ...r, status: e.target.value }))}
-                      className="w-full rounded-lg px-2 py-1.5 text-xs bg-white focus:outline-none" style={{ border: '1px solid var(--hairline)' }}>
-                      {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <input type="text" required value={newRaid.title} onChange={e => setNewRaid(r => ({ ...r, title: e.target.value }))}
-                    placeholder="Title *" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                  <textarea value={newRaid.description} onChange={e => setNewRaid(r => ({ ...r, description: e.target.value }))}
-                    rows={2} placeholder="Description" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none resize-none" style={{ border: '1px solid var(--hairline)' }} />
-                  <input type="text" value={newRaid.owner} onChange={e => setNewRaid(r => ({ ...r, owner: e.target.value }))}
-                    placeholder="Owner" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                  <div className="flex gap-2">
-                    <button type="submit" disabled={addingRaid} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
-                      {addingRaid ? 'Adding…' : 'Add'}
-                    </button>
-                    <button type="button" onClick={() => { setShowAddRaid(false); setNewRaid(EMPTY_RAID) }} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
-                  </div>
-                </form>
-              )}
-
-              {raidItems.length === 0 ? (
-                <p className="text-sm py-4" style={{ color: 'var(--muted)' }}>No RAID items logged yet.</p>
-              ) : (
-                <div className="flex flex-col gap-2.5">
-                  {raidItems.map(item => (
-                    <div key={item.id} className="rounded-xl p-3.5" style={{ border: '1px solid var(--hairline)' }}>
-                      {editingRaid === item.id ? (
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-2 gap-2">
-                            <select value={editRaidData.type} onChange={e => setEditRaidData(d => ({ ...d, type: e.target.value }))}
-                              className="rounded-lg px-2 py-1 text-xs bg-white focus:outline-none" style={{ border: '1px solid var(--hairline)' }}>
-                              {RAID_TYPES.map(t => <option key={t}>{t}</option>)}
-                            </select>
-                            <select value={editRaidData.status} onChange={e => setEditRaidData(d => ({ ...d, status: e.target.value }))}
-                              className="rounded-lg px-2 py-1 text-xs bg-white focus:outline-none" style={{ border: '1px solid var(--hairline)' }}>
-                              {RAID_STATUSES.map(s => <option key={s}>{s}</option>)}
-                            </select>
-                          </div>
-                          <input type="text" value={editRaidData.title} onChange={e => setEditRaidData(d => ({ ...d, title: e.target.value }))}
-                            className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                          <textarea value={editRaidData.description} onChange={e => setEditRaidData(d => ({ ...d, description: e.target.value }))}
-                            rows={2} className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none resize-none" style={{ border: '1px solid var(--hairline)' }} />
-                          <input type="text" value={editRaidData.owner} onChange={e => setEditRaidData(d => ({ ...d, owner: e.target.value }))}
-                            placeholder="Owner" className="w-full rounded-lg px-2 py-1 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                          <div className="flex gap-2">
-                            <button onClick={() => handleUpdateRaid(item.id)} className="text-black text-xs font-medium px-3 py-1 rounded-lg" style={{ background: 'var(--gold)' }}>Save</button>
-                            <button onClick={() => setEditingRaid(null)} className="text-xs px-2 py-1" style={{ color: 'var(--muted)' }}>Cancel</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-start justify-between gap-2 mb-1.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded" style={RAID_TYPE_STYLE[item.type] || {}}>{item.type}</span>
-                              <span className="text-[11px] font-semibold px-2 py-0.5 rounded" style={RAID_STATUS_STYLE[item.status] || {}}>{item.status}</span>
-                            </div>
-                            {!isViewer && <div className="flex gap-2 flex-shrink-0">
-                              <button onClick={() => { setEditingRaid(item.id); setEditRaidData({ type: item.type, title: item.title, description: item.description, status: item.status, owner: item.owner }) }}
-                                className="text-xs font-medium" style={{ color: 'var(--arctic)' }}>Edit</button>
-                              <button onClick={() => handleDeleteRaid(item.id)} className="text-xs" style={{ color: 'var(--rust)' }}>Delete</button>
-                            </div>}
-                          </div>
-                          <p className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{item.title}</p>
-                          {item.description && <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--muted)' }}>{item.description}</p>}
-                          <p className="font-mono text-[11.5px] mt-2" style={{ color: 'var(--muted)' }}>
-                            {item.owner && `Owner: ${item.owner}`}{item.owner && item.raised_date && ' · '}{item.raised_date && formatDate(item.raised_date)}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  ))}
+              <Section title="Consultant hours" subtitle={impl.workfrontHours?.syncedAt ? `From Workfront · synced ${formatDateTime(impl.workfrontHours.syncedAt)}` : 'From Workfront'}>
+                <div className="flex flex-col gap-5">
+                  <HoursRow label="Implementation-Activation Services" hint="partner consultant hours purchased" hours={impl.workfrontHours?.activationServices} />
+                  <HoursRow label="Activation Support" hint="Bloomreach PSM time" hours={impl.workfrontHours?.activationSupport} />
+                  {impl.workfrontHours?.consultingServices && (
+                    <HoursRow label="Additional Consulting" hint="consultancy hours on top of activation services" hours={impl.workfrontHours.consultingServices} />
+                  )}
                 </div>
+              </Section>
+
+              {!isViewer && (
+                <Section title="Scope of work" subtitle="The SOW and related documents">
+                  <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={false} onChange={() => {}} />
+                </Section>
               )}
-            </Card>
+
+              {!isViewer && (
+                <Section title="Partner access" subtitle={`${(impl.accessEmails || []).length} ${(impl.accessEmails || []).length === 1 ? 'person' : 'people'} can see this implementation`}>
+                  {(impl.accessEmails || []).length === 0 ? (
+                    <p className="text-[13px]" style={{ color: 'var(--muted)' }}>No partner access granted yet.</p>
+                  ) : (
+                    <ul className="flex flex-col gap-2">
+                      {impl.accessEmails.map(entry => {
+                        const email = entry.replace(' (partner-wide)', '')
+                        return (
+                          <li key={entry} className="flex items-center gap-2.5 min-w-0">
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-semibold shrink-0"
+                              style={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--hairline)' }} aria-hidden="true">
+                              {email.slice(0, 2).toUpperCase()}
+                            </span>
+                            <span className="text-[13px] truncate" style={{ color: 'var(--ink)' }}>{email}</span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </Section>
+              )}
+            </div>
           </div>
         )}
 
-        {/* Internal — admin and SDC only, hidden from partners */}
+        {/* Internal — admin, SDC and viewers only, hidden from partners */}
         {activeTab === 'internal' && canViewAll && (
-          <div>
-            <div className="flex items-center gap-2 mb-3.5">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--muted)' }} />
-              <span className="text-xs" style={{ color: 'var(--muted)' }}>Bloomreach-internal — hidden from the partner</span>
-            </div>
-            <div className="flex flex-col gap-5">
-              <Card>
-                <div className="flex items-center justify-between mb-3.5">
-                  <SectionTitle>Slack Notifications</SectionTitle>
-                  {slackSaved && <span className="text-xs font-medium -mt-3.5" style={{ color: 'var(--moss)' }}>Saved!</span>}
-                </div>
-                <p className="text-xs mb-3 -mt-2.5" style={{ color: 'var(--muted)' }}>
-                  Partner touch point/QA updates post to this channel. Invite the bot to the channel first (<span className="font-mono">/invite @YourAppName</span>), then paste its channel ID below.
-                </p>
-                <form onSubmit={handleSaveSlackChannel} className="flex gap-2 max-w-sm">
-                  <input type="text" value={slackChannelId} onChange={e => setSlackChannelId(e.target.value)} placeholder="C0123ABCD" disabled={!isAdmin}
-                    className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
-                  <button type="submit" disabled={savingSlack || !isAdmin} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
-                    {savingSlack ? 'Saving…' : 'Save'}
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
+            <div className="flex flex-col gap-5 min-w-0">
+              <Section
+                title="Bloomreach org & usage"
+                subtitle={impl.bloomreachOrgId ? undefined : 'Not linked yet — ask Claude to match it, or link it manually'}
+                action={isAdmin && !editingOrgLink && (
+                  <button onClick={() => { setOrgLinkInput({ orgId: impl.bloomreachOrgId || '', orgName: impl.bloomreachOrgName || '' }); setEditingOrgLink(true) }}
+                    className="text-xs font-medium shrink-0" style={{ color: 'var(--arctic)' }}>
+                    {impl.bloomreachOrgId ? 'Edit link' : 'Link org'}
                   </button>
-                </form>
-              </Card>
-
-              <Card>
-                <div className="flex items-center justify-between mb-3.5">
-                  <SectionTitle>Workfront Project</SectionTitle>
-                  {workfrontSaved && <span className="text-xs font-medium -mt-3.5" style={{ color: 'var(--moss)' }}>Saved!</span>}
-                </div>
-                <p className="text-xs mb-3 -mt-2.5" style={{ color: 'var(--muted)' }}>
-                  The Workfront project holding this client's "Implementation-Activation Services" and "Activation Support" tasks. The hours sync only updates implementations with an ID here — paste it from the project's Workfront URL.
-                </p>
-                <form onSubmit={handleSaveWorkfrontProject} className="flex gap-2 max-w-md">
-                  <input type="text" value={workfrontProjectId} onChange={e => setWorkfrontProjectId(e.target.value)} placeholder="69fcaaa90009d30d1888d504fda0032c" disabled={!isAdmin}
-                    className="flex-1 font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)' }} />
-                  <button type="submit" disabled={savingWorkfront || !isAdmin} className="disabled:opacity-50 text-black text-sm font-medium px-4 py-1.5 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
-                    {savingWorkfront ? 'Saving…' : 'Save'}
-                  </button>
-                </form>
-              </Card>
-
-              <Card>
-                <div className="flex items-center justify-between mb-3.5">
-                  <SectionTitle>Key Dates</SectionTitle>
-                  {datesSaved && <span className="text-xs font-medium -mt-3.5" style={{ color: 'var(--moss)' }}>Saved!</span>}
-                </div>
-                <form onSubmit={saveDates} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  {DATE_FIELDS.map(field => (
-                    <div key={field.key}>
-                      <label className="block text-xs mb-1" style={{ color: 'var(--muted)' }}>
-                        {field.label}
-                        {field.note && <span className="ml-1" style={{ color: 'var(--arctic)' }}>({field.note})</span>}
-                      </label>
-                      <input type="date" value={dates[field.key] || ''} disabled={!isAdmin} onChange={e => setDates(d => ({ ...d, [field.key]: e.target.value }))}
-                        className="w-full font-mono rounded-lg px-3 py-1.5 text-sm focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)', background: 'var(--paper)' }} />
-                    </div>
-                  ))}
-                  <button type="submit" disabled={savingDates || !isAdmin} className="sm:col-span-4 disabled:opacity-50 text-black text-sm font-medium py-2 rounded-lg transition-opacity hover:opacity-90" style={{ background: 'var(--gold)' }}>
-                    {savingDates ? 'Saving…' : 'Save dates'}
-                  </button>
-                </form>
-              </Card>
-
-              {!isViewer && <Card>
-                <SectionTitle>Scope of Work</SectionTitle>
-                <p className="text-xs -mt-2.5 mb-3" style={{ color: 'var(--muted)' }}>The partner's SOW and any related documents. Visible to the partner on their Overview tab.</p>
-                <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} onExtractUsage={isAdmin ? handleExtractUsage : undefined} />
-                {extracting && (
-                  <div className="mt-2.5">
-                    <p className="text-xs mb-1.5" style={{ color: 'var(--muted)' }}>
-                      Reading contract and extracting usage limits… {extractSeconds > 0 && `(${extractSeconds}s)`}
-                    </p>
-                    <div className="indeterminate-bar h-1.5 w-full max-w-xs rounded-full" />
-                  </div>
                 )}
-                {extractError && <p className="text-xs mt-2" style={{ color: 'var(--rust)' }}>{extractError}</p>}
-              </Card>}
-
-              <Card>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <SectionTitle>Progress Steps</SectionTitle>
-                    <p className="text-xs -mt-3" style={{ color: 'var(--muted)' }}>
-                      {stepDefs?.isCustom ? 'Custom checklist for this client.' : 'Using the standard checklist.'} {tpList.length} touch points · {qaList.length} QA steps
-                    </p>
-                  </div>
-                  {isAdmin && (
-                    <button onClick={() => setShowSteps(v => !v)} className="text-sm font-medium px-4 py-1.5 rounded-lg transition-colors" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
-                      {showSteps ? 'Done' : 'Edit steps'}
-                    </button>
-                  )}
-                </div>
-                {isAdmin && showSteps && stepDefs && (
-                  <div className="mt-4">
-                    <StepsManager implementationId={id} steps={stepDefs} onChanged={setStepDefs} onClose={() => setShowSteps(false)} />
-                  </div>
-                )}
-              </Card>
-
-              <Card>
-                <SectionTitle>Account team</SectionTitle>
-                <p className="text-xs -mt-2 mb-3.5" style={{ color: 'var(--muted)' }}>
-                  Who looks after this account internally. The PSM is credited and notified on SDC tickets raised from here.
-                </p>
-                <AccountTeam impl={impl} isAdmin={isAdmin} onChange={patchImpl} />
-              </Card>
-
-              <Card>
-                <div className="flex items-center justify-between mb-2.5">
-                  <SectionTitle>Bloomreach Org</SectionTitle>
-                  {isAdmin && !editingOrgLink && (
-                    <button onClick={() => { setOrgLinkInput({ orgId: impl.bloomreachOrgId || '', orgName: impl.bloomreachOrgName || '' }); setEditingOrgLink(true) }}
-                      className="text-xs font-medium -mt-3.5" style={{ color: 'var(--arctic)' }}>
-                      {impl.bloomreachOrgId ? 'Edit' : 'Link org'}
-                    </button>
-                  )}
-                </div>
-
-                {editingOrgLink ? (
-                  <form onSubmit={handleSaveOrgLink} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input type="text" value={orgLinkInput.orgName} onChange={e => setOrgLinkInput(v => ({ ...v, orgName: e.target.value }))}
-                      placeholder="Org name (e.g. Dormeo)" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
-                    <input type="text" value={orgLinkInput.orgId} onChange={e => setOrgLinkInput(v => ({ ...v, orgId: e.target.value }))}
-                      placeholder="Org ID" className="w-full font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none" style={{ border: '1px solid var(--hairline)' }} />
+              >
+                {editingOrgLink && (
+                  <form onSubmit={handleSaveOrgLink} className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                    <input type="text" value={orgLinkInput.orgName} onChange={e => setOrgLinkInput(v => ({ ...v, orgName: e.target.value }))} placeholder="Org name (e.g. Dormeo)" className={inputCls} style={inputStyle} />
+                    <input type="text" value={orgLinkInput.orgId} onChange={e => setOrgLinkInput(v => ({ ...v, orgId: e.target.value }))} placeholder="Org ID" className={`${inputCls} font-mono`} style={inputStyle} />
                     <div className="flex gap-2 sm:col-span-2">
-                      <button type="submit" disabled={savingOrgLink} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
-                        {savingOrgLink ? 'Saving…' : 'Save'}
-                      </button>
+                      <button type="submit" disabled={savingOrgLink} className={`${smallBtn} disabled:opacity-50`} style={goldBtn}>{savingOrgLink ? 'Saving…' : 'Save'}</button>
                       <button type="button" onClick={() => setEditingOrgLink(false)} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
                     </div>
                   </form>
-                ) : impl.bloomreachOrgId ? (
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[13.5px]" style={{ color: 'var(--ink)' }}>{impl.bloomreachOrgName}</span>
-                      <span className="font-mono text-[11.5px]" style={{ color: 'var(--muted)' }}>{impl.bloomreachOrgId}</span>
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full ml-auto" style={{ background: 'var(--paper)', color: 'var(--ink)' }}>
-                        {impl.pricingModel === 'events' ? 'Events' : 'Profiles'}
-                      </span>
-                    </div>
-                    <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--hairline)' }}>
-                      <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Billing model</p>
-                      <div className="flex gap-2 mb-3">
-                        {[['profiles', 'Profiles'], ['events', 'Events']].map(([value, label]) => {
-                          const active = (impl.pricingModel || 'profiles') === value
-                          return (
-                            <button key={value} disabled={savingPricing || !isAdmin} onClick={() => handleSetPricingModel(value)}
-                              className="text-xs font-medium px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
-                              style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
-                              {label}
-                            </button>
-                          )
-                        })}
-                      </div>
-                      <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Loomi Region</p>
-                      <p className="text-[11px] mb-2" style={{ color: 'var(--muted)' }}>Which Loomi Connect instance the MCP should query for this client.</p>
-                      <div className="flex gap-2 mb-4">
-                        {[['eu', 'EU'], ['uk', 'UK']].map(([value, label]) => {
-                          const active = impl.bloomreachRegion === value
-                          return (
-                            <button key={value} disabled={savingRegion || !isAdmin} onClick={() => handleSetRegion(value)}
-                              className="text-xs font-medium px-3 py-1 rounded-lg transition-colors disabled:opacity-50"
-                              style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
-                              {label}
-                            </button>
-                          )
-                        })}
-                        {!impl.bloomreachRegion && <span className="text-xs self-center" style={{ color: 'var(--muted)' }}>Not set</span>}
-                      </div>
-
-                      <div className="space-y-3">
-                        {(USAGE_METERS[impl.pricingModel || 'profiles']).map(meter => (
-                          <MeterEditor key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} editable={isAdmin} onSave={(value, limit) => saveMetric(meter.key, value, limit)} />
-                        ))}
-                      </div>
-                      <p className="text-[11px] mt-3 italic" style={{ color: 'var(--muted)' }}>
-                        Enter from the order form (limit) and usage dashboard (usage) — these meters aren't available via the API.
-                        {(impl.profileCount !== null && impl.profileCount !== undefined) || (impl.eventCount !== null && impl.eventCount !== undefined) ? (
-                          <span className="block mt-0.5">
-                            Live (indicative): {fmt(impl.profileCount)} profiles · {fmt(impl.eventCount)} events
-                            {impl.profileCountSyncedAt && <span> · synced {formatDateTime(impl.profileCountSyncedAt)}</span>}
-                          </span>
-                        ) : null}
-                      </p>
-
-                      <p className="text-[10px] font-medium uppercase tracking-widest mt-4 mb-1.5" style={{ color: 'var(--muted)' }}>Other contract allowances</p>
-                      <div className="space-y-3">
-                        {CONTRACT_ALLOWANCES.map(meter => (
-                          <AllowanceRow key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} editable={isAdmin} onSave={limit => saveAllowance(meter.key, limit)} />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>Not linked yet — ask Claude to match this implementation to its Bloomreach org, or link it manually above.</p>
                 )}
-              </Card>
+                {impl.bloomreachOrgId && (
+                  <>
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl p-3.5 mb-4" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
+                      <div className="min-w-0">
+                        <p className="text-[11px] uppercase tracking-wide" style={{ color: 'var(--muted)' }}>Org</p>
+                        <p className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{impl.bloomreachOrgName}</p>
+                        <p className="font-mono text-[11px]" style={{ color: 'var(--muted)' }}>{impl.bloomreachOrgId}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide mb-1" style={{ color: 'var(--muted)' }}>Billing model</p>
+                        <SegButtons options={[['profiles', 'Profiles'], ['events', 'Events']]} value={impl.pricingModel || 'profiles'} onPick={handleSetPricingModel} disabled={savingPricing || !isAdmin} />
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase tracking-wide mb-1" style={{ color: 'var(--muted)' }} title="Which Loomi Connect instance the MCP should query for this client">Loomi region</p>
+                        <SegButtons options={[['eu', 'EU'], ['uk', 'UK']]} value={impl.bloomreachRegion} onPick={handleSetRegion} disabled={savingRegion || !isAdmin} />
+                      </div>
+                    </div>
 
-              <Card>
-                <SectionTitle>Use Cases</SectionTitle>
-                <p className="text-xs -mt-2.5 mb-3" style={{ color: 'var(--muted)' }}>
-                  {(impl.scenarios || []).length} scenario{(impl.scenarios || []).length !== 1 ? 's' : ''}
-                  {impl.scenariosSyncedAt && <span> · Last synced {formatDateTime(impl.scenariosSyncedAt)}</span>}
-                </p>
-                {(impl.scenarios || []).length === 0 ? (
-                  <p className="text-xs" style={{ color: 'var(--muted)' }}>
-                    {impl.scenariosSyncedAt ? 'Synced, but no scenarios found in the Production project' : 'Not synced yet — ask Claude to sync use cases for this implementation'}
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--muted)' }}>Billing meters</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(USAGE_METERS[impl.pricingModel || 'profiles']).map(meter => (
+                        <MeterEditor key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} editable={isAdmin} onSave={(value, limit) => saveMetric(meter.key, value, limit)} />
+                      ))}
+                    </div>
+                    <p className="text-[11px] mt-2" style={{ color: 'var(--muted)' }}>
+                      Limits from the order form, usage from the usage dashboard — these meters aren't available via the API.
+                      {(impl.profileCount != null || impl.eventCount != null) && (
+                        <span className="block mt-0.5">
+                          Live (indicative): {fmt(impl.profileCount)} profiles · {fmt(impl.eventCount)} events
+                          {impl.profileCountSyncedAt && <span> · synced {formatDateTime(impl.profileCountSyncedAt)}</span>}
+                        </span>
+                      )}
+                    </p>
+
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wide mt-5 mb-2" style={{ color: 'var(--muted)' }}>Other contract allowances</h3>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {CONTRACT_ALLOWANCES.map(meter => (
+                        <AllowanceRow key={meter.key} meter={meter} data={(impl.usageMetrics || {})[meter.key]} editable={isAdmin} onSave={limit => saveAllowance(meter.key, limit)} />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </Section>
+
+              <Section
+                title="Use cases"
+                subtitle={`${scenarios.length} scenario${scenarios.length !== 1 ? 's' : ''}${scenarios.length ? ` · ${activeScenarios} active` : ''}${impl.scenariosSyncedAt ? ` · synced ${formatDateTime(impl.scenariosSyncedAt)}` : ''}`}
+              >
+                {scenarios.length === 0 ? (
+                  <p className="text-[13px]" style={{ color: 'var(--muted)' }}>
+                    {impl.scenariosSyncedAt ? 'Synced, but no scenarios found in the Production project.' : 'Not synced yet — ask Claude to sync use cases for this implementation.'}
                   </p>
                 ) : (
-                  <div className="space-y-2">
-                    {impl.scenarios.map(sc => {
-                      const style = SCENARIO_STATUS_STYLE[(sc.status || '').toLowerCase()] || { background: 'var(--hairline)', color: 'var(--muted)' }
+                  <ul className="divide-y divide-[var(--hairline)]">
+                    {scenarios.map(sc => {
+                      const st = SCENARIO_STATUS_STYLE[(sc.status || '').toLowerCase()] || { background: 'var(--hairline)', color: 'var(--muted)' }
                       return (
-                        <div key={sc.scenario_id} className="flex items-center justify-between gap-2 rounded-xl px-3.5 py-2.5" style={{ border: '1px solid var(--hairline)' }}>
+                        <li key={sc.scenario_id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                           <div className="min-w-0">
-                            <p className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{sc.name}</p>
-                            {sc.tags && <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{sc.tags}</p>}
+                            <p className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>{sc.name}</p>
+                            {sc.tags && <p className="text-xs truncate" style={{ color: 'var(--muted)' }}>{sc.tags}</p>}
                           </div>
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0" style={style}>{sc.status}</span>
-                        </div>
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0" style={st}>{sc.status}</span>
+                        </li>
                       )
                     })}
-                  </div>
+                  </ul>
                 )}
-              </Card>
+              </Section>
 
-              <Card>
-                <SectionTitle pill={
-                  isAdmin && <button onClick={() => setShowAddNote(v => !v)} className="text-xs font-semibold px-3.5 py-1.5 rounded-[9px] text-black" style={{ background: 'var(--gold)' }}>+ Add note</button>
-                }>Meeting Notes</SectionTitle>
-
+              <Section
+                title="Meeting notes"
+                subtitle={`${notes.length} note${notes.length !== 1 ? 's' : ''}`}
+                action={isAdmin && <button onClick={() => setShowAddNote(v => !v)} className={smallBtn} style={goldBtn}>+ Add note</button>}
+              >
                 {isAdmin && showAddNote && (
-                  <form onSubmit={handleAddNote} className="mb-4 p-3 rounded-xl space-y-2.5 text-sm" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <input type="text" required value={newNote.title} onChange={e => setNewNote(n => ({ ...n, title: e.target.value }))}
-                        placeholder="Title *" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none bg-white" style={{ border: '1px solid var(--hairline)' }} />
-                      <input type="date" value={newNote.meeting_date} onChange={e => setNewNote(n => ({ ...n, meeting_date: e.target.value }))}
-                        className="w-full font-mono rounded-lg px-2 py-1.5 text-xs focus:outline-none bg-white" style={{ border: '1px solid var(--hairline)' }} />
+                  <form onSubmit={handleAddNote} className="mb-4 p-3 rounded-xl space-y-2" style={{ background: 'var(--paper)', border: '1px solid var(--hairline)' }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px] gap-2">
+                      <input type="text" required value={newNote.title} onChange={e => setNewNote(n => ({ ...n, title: e.target.value }))} placeholder="Title *" className={inputCls} style={inputStyle} />
+                      <input type="date" value={newNote.meeting_date} onChange={e => setNewNote(n => ({ ...n, meeting_date: e.target.value }))} className={`${inputCls} font-mono`} style={inputStyle} />
                     </div>
-                    <textarea value={newNote.content} onChange={e => setNewNote(n => ({ ...n, content: e.target.value }))}
-                      rows={4} placeholder="Notes…" className="w-full rounded-lg px-2 py-1.5 text-xs focus:outline-none resize-none bg-white" style={{ border: '1px solid var(--hairline)' }} />
+                    <textarea value={newNote.content} onChange={e => setNewNote(n => ({ ...n, content: e.target.value }))} rows={4} placeholder="Notes…" className={`${inputCls} resize-none`} style={inputStyle} />
                     <div className="flex gap-2">
-                      <button type="submit" disabled={addingNote} className="text-black text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)' }}>
-                        {addingNote ? 'Adding…' : 'Add'}
-                      </button>
+                      <button type="submit" disabled={addingNote} className={`${smallBtn} disabled:opacity-50`} style={goldBtn}>{addingNote ? 'Adding…' : 'Add'}</button>
                       <button type="button" onClick={() => { setShowAddNote(false); setNewNote(EMPTY_NOTE) }} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
                     </div>
                   </form>
                 )}
-
-                {(impl.meetingNotes || []).length === 0 ? (
-                  <p className="text-sm" style={{ color: 'var(--muted)' }}>No meeting notes yet.</p>
+                {notes.length === 0 ? (
+                  <p className="text-[13px]" style={{ color: 'var(--muted)' }}>No meeting notes yet.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {impl.meetingNotes.map(note => {
+                  <ul className="divide-y divide-[var(--hairline)]">
+                    {notes.map(note => {
                       const isExpanded = expandedNote === note.id
                       return (
-                        <div key={note.id} className="rounded-xl p-3" style={{ border: '1px solid var(--hairline)' }}>
-                          <div className="flex items-start justify-between gap-2">
-                            <button onClick={() => setExpandedNote(isExpanded ? null : note.id)} className="text-left flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-sm font-medium" style={{ color: 'var(--ink)' }}>{note.title}</span>
+                        <li key={note.id} className="py-2.5 first:pt-0 last:pb-0">
+                          <div className="flex items-start justify-between gap-3">
+                            <button onClick={() => setExpandedNote(isExpanded ? null : note.id)} className="flex items-start gap-3 text-left flex-1 min-w-0" aria-expanded={isExpanded}>
+                              <span className="font-mono text-[11.5px] w-20 shrink-0 pt-0.5" style={{ color: 'var(--muted)' }}>{formatDate(note.meeting_date)}</span>
+                              <span className="min-w-0">
+                                <span className="text-[13.5px] font-medium" style={{ color: 'var(--ink)' }}>{note.title}</span>
                                 {note.source && note.source !== 'manual' && (
-                                  <span className="text-xs font-medium px-1.5 py-0.5 rounded" style={{ background: 'var(--moss-bg)', color: 'var(--moss)' }}>{note.source}</span>
+                                  <span className="ml-2 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full align-middle" style={{ background: 'var(--moss-bg)', color: 'var(--moss)' }}>{note.source}</span>
                                 )}
-                              </div>
-                              <div className="text-xs font-mono mt-0.5" style={{ color: 'var(--muted)' }}>{formatDate(note.meeting_date)}</div>
+                              </span>
                             </button>
-                            {isAdmin && (
-                              <button onClick={() => handleDeleteNote(note.id)} disabled={deletingNoteId === note.id} className="text-xs disabled:opacity-50 flex-shrink-0" style={{ color: 'var(--rust)' }}>
-                                {deletingNoteId === note.id ? 'Deleting…' : 'Delete'}
-                              </button>
-                            )}
+                            <div className="flex items-center gap-3 shrink-0">
+                              {note.content && <span className="text-xs" style={{ color: 'var(--muted)' }}>{isExpanded ? '▾' : '▸'}</span>}
+                              {isAdmin && (
+                                <button onClick={() => handleDeleteNote(note.id)} disabled={deletingNoteId === note.id} className="text-xs disabled:opacity-50" style={{ color: 'var(--rust)' }}>
+                                  {deletingNoteId === note.id ? 'Deleting…' : 'Delete'}
+                                </button>
+                              )}
+                            </div>
                           </div>
                           {isExpanded && note.content && (
-                            <p className="text-xs mt-2 leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>{note.content}</p>
+                            <p className="text-[12.5px] mt-2 ml-[92px] leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--ink)' }}>{note.content}</p>
                           )}
-                        </div>
+                        </li>
                       )
                     })}
-                  </div>
+                  </ul>
                 )}
-              </Card>
+              </Section>
+            </div>
+
+            <div className="flex flex-col gap-5 min-w-0">
+              <Section title="Account team" subtitle="The PSM is credited and notified on SDC tickets raised from here">
+                <AccountTeam impl={impl} isAdmin={isAdmin} onChange={patchImpl} avatars={avatars} />
+              </Section>
 
               {isAdmin && (
-                <Card>
-                  <div className="flex items-center justify-between mb-2.5">
-                    <SectionTitle>Implementation Actions</SectionTitle>
-                    {savingStatus && <span className="text-xs -mt-3.5" style={{ color: 'var(--muted)' }}>Saving…</span>}
-                  </div>
-                  <p className="text-[10px] font-medium uppercase tracking-widest mb-1.5" style={{ color: 'var(--muted)' }}>Status</p>
-                  <div className="flex gap-2 mb-4 flex-wrap items-center">
-                    {Object.values(IMPLEMENTATION_STATUSES).map(meta => {
-                      const active = (impl.status || 'active') === meta.key
-                      return (
-                        <button key={meta.key} disabled={savingStatus} onClick={() => handleSetStatus(meta.key)}
-                          className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                          style={active ? { background: 'var(--gold)', color: '#000', border: '1px solid var(--gold)' } : { background: '#fff', color: 'var(--muted)', border: '1px solid var(--hairline)' }}>
-                          {meta.label}
-                        </button>
-                      )
-                    })}
+                <Section title="Status" action={savingStatus && <span className="text-xs" style={{ color: 'var(--muted)' }}>Saving…</span>}>
+                  <SegButtons
+                    options={Object.values(IMPLEMENTATION_STATUSES).map(m => [m.key, m.label])}
+                    value={impl.status || 'active'}
+                    onPick={handleSetStatus}
+                    disabled={savingStatus}
+                  />
+                  <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--hairline)' }}>
                     <button onClick={handleTriggerBauHandover} disabled={savingBau}
-                      className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-70"
+                      className="w-full text-xs font-semibold px-3 py-2 rounded-lg transition-colors disabled:opacity-70"
                       style={bauJustTriggered
                         ? { background: 'var(--moss-bg)', color: 'var(--moss)', border: '1px solid var(--moss)' }
                         : { background: '#fff', color: 'var(--ink)', border: '1px solid var(--hairline)' }}>
-                      {savingBau ? 'Generating…' : bauJustTriggered ? 'Generated ✓' : 'Generate BAU Handover'}
+                      {savingBau ? 'Generating…' : bauJustTriggered ? 'BAU handover generated ✓' : 'Generate BAU handover'}
                     </button>
                   </div>
-                  <button onClick={handleDelete} disabled={deleting}
-                    className="text-xs font-medium px-3.5 py-1.5 rounded-lg hover:bg-[var(--rust-bg)] disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--rust)', color: 'var(--rust)' }}>
-                    {deleting ? 'Deleting…' : 'Delete'}
+                </Section>
+              )}
+
+              <Section title="Key dates" action={datesSaved && <span className="text-xs font-medium" style={{ color: 'var(--moss)' }}>Saved ✓</span>}>
+                <form onSubmit={saveDates} className="flex flex-col gap-2.5">
+                  {DATE_FIELDS.map(field => (
+                    <label key={field.key} className="flex items-center justify-between gap-3">
+                      <span className="text-[12.5px]" style={{ color: 'var(--muted)' }}>
+                        {field.label}
+                        {field.note && <span className="block text-[10.5px]" style={{ color: 'var(--arctic)' }}>{field.note}</span>}
+                      </span>
+                      <input type="date" value={dates[field.key] || ''} disabled={!isAdmin} onChange={e => setDates(d => ({ ...d, [field.key]: e.target.value }))}
+                        className="w-40 font-mono rounded-lg px-2.5 py-1.5 text-xs focus:outline-none disabled:opacity-60" style={{ border: '1px solid var(--hairline)', background: 'var(--paper)' }} />
+                    </label>
+                  ))}
+                  {isAdmin && (
+                    <button type="submit" disabled={savingDates} className="mt-1 text-xs font-semibold py-2 rounded-lg disabled:opacity-50" style={goldBtn}>
+                      {savingDates ? 'Saving…' : 'Save dates'}
+                    </button>
+                  )}
+                </form>
+              </Section>
+
+              <Section title="Connections" subtitle="Where updates post and where hours sync from">
+                <form onSubmit={handleSaveSlackChannel} className="mb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12.5px] font-medium" style={{ color: 'var(--ink)' }}>Slack channel</span>
+                    {slackSaved && <span className="text-xs font-medium" style={{ color: 'var(--moss)' }}>Saved ✓</span>}
+                  </div>
+                  <p className="text-[11px] mb-1.5" style={{ color: 'var(--muted)' }}>Touch point / QA updates post here. Invite the bot to the channel first, then paste its ID.</p>
+                  <div className="flex gap-2">
+                    <input type="text" value={slackChannelId} onChange={e => setSlackChannelId(e.target.value)} placeholder="C0123ABCD" disabled={!isAdmin} className={`${inputCls} font-mono disabled:opacity-60`} style={inputStyle} />
+                    {isAdmin && <button type="submit" disabled={savingSlack} className={`${smallBtn} disabled:opacity-50`} style={goldBtn}>{savingSlack ? '…' : 'Save'}</button>}
+                  </div>
+                </form>
+                <form onSubmit={handleSaveWorkfrontProject}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[12.5px] font-medium" style={{ color: 'var(--ink)' }}>Workfront project</span>
+                    {workfrontSaved && <span className="text-xs font-medium" style={{ color: 'var(--moss)' }}>Saved ✓</span>}
+                  </div>
+                  <p className="text-[11px] mb-1.5" style={{ color: 'var(--muted)' }}>Holds the Activation Services / Support tasks. The hours sync only runs when this is set — paste the ID from the project's URL.</p>
+                  <div className="flex gap-2">
+                    <input type="text" value={workfrontProjectId} onChange={e => setWorkfrontProjectId(e.target.value)} placeholder="69fcaaa90009d30d…" disabled={!isAdmin} className={`${inputCls} font-mono disabled:opacity-60`} style={inputStyle} />
+                    {isAdmin && <button type="submit" disabled={savingWorkfront} className={`${smallBtn} disabled:opacity-50`} style={goldBtn}>{savingWorkfront ? '…' : 'Save'}</button>}
+                  </div>
+                </form>
+              </Section>
+
+              <Section
+                title="Progress steps"
+                subtitle={`${stepDefs?.isCustom ? 'Custom checklist' : 'Standard checklist'} · ${tpList.length} touch points · ${qaList.length} QA steps`}
+                action={isAdmin && (
+                  <button onClick={() => setShowSteps(v => !v)} className="text-xs font-medium shrink-0" style={{ color: 'var(--arctic)' }}>
+                    {showSteps ? 'Done' : 'Edit steps'}
                   </button>
-                </Card>
+                )}
+              >
+                {isAdmin && showSteps && stepDefs
+                  ? <StepsManager implementationId={id} steps={stepDefs} onChanged={setStepDefs} onClose={() => setShowSteps(false)} />
+                  : <p className="text-xs" style={{ color: 'var(--muted)' }}>Changes here only affect this client.</p>}
+              </Section>
+
+              {!isViewer && (
+                <Section title="Scope of work" subtitle="Visible to the partner on their Overview tab">
+                  <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} onExtractUsage={isAdmin ? handleExtractUsage : undefined} />
+                  {extracting && (
+                    <div className="mt-2.5">
+                      <p className="text-xs mb-1.5" style={{ color: 'var(--muted)' }}>
+                        Reading contract and extracting usage limits… {extractSeconds > 0 && `(${extractSeconds}s)`}
+                      </p>
+                      <div className="indeterminate-bar h-1.5 w-full rounded-full" />
+                    </div>
+                  )}
+                  {extractError && <p className="text-xs mt-2" style={{ color: 'var(--rust)' }}>{extractError}</p>}
+                </Section>
+              )}
+
+              {isAdmin && (
+                <div className="rounded-2xl p-5" style={{ border: '1px solid #f0c9ba', background: '#fff' }}>
+                  <h2 className="font-display text-[15px] font-semibold" style={{ color: 'var(--rust)' }}>Danger zone</h2>
+                  <p className="text-xs mt-0.5 mb-3" style={{ color: 'var(--muted)' }}>Deleting removes this implementation and everything logged against it.</p>
+                  <button onClick={handleDelete} disabled={deleting}
+                    className="text-xs font-semibold px-3.5 py-1.5 rounded-lg hover:bg-[var(--rust-bg)] disabled:opacity-50 transition-colors" style={{ border: '1px solid var(--rust)', color: 'var(--rust)' }}>
+                    {deleting ? 'Deleting…' : 'Delete implementation'}
+                  </button>
+                </div>
               )}
             </div>
           </div>

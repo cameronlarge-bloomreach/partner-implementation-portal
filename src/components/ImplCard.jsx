@@ -33,7 +33,7 @@ function DueLabel({ impl }) {
 // team fields are internal-only, so partners never see this.
 const TEAM_ROLES = [['psm', 'PSM'], ['csm', 'CSM'], ['am', 'AM']]
 
-function TeamStack({ impl, avatars }) {
+export function TeamStack({ impl, avatars, size = 28 }) {
   // One bubble per person, even if they hold more than one role here.
   const people = []
   for (const [key, label] of TEAM_ROLES) {
@@ -51,8 +51,8 @@ function TeamStack({ impl, avatars }) {
         <span
           key={p.email}
           title={`${p.roles.join(' & ')} · ${p.name}`}
-          className="relative inline-flex items-center justify-center w-7 h-7 rounded-full overflow-hidden text-[10px] font-semibold"
-          style={{ background: 'var(--paper)', color: 'var(--ink)', boxShadow: '0 0 0 2px #fff' }}
+          className="relative inline-flex items-center justify-center rounded-full overflow-hidden font-semibold"
+          style={{ width: size, height: size, fontSize: size * 0.36, background: 'var(--paper)', color: 'var(--ink)', boxShadow: '0 0 0 2px #fff' }}
         >
           {p.photo
             ? <img src={p.photo} alt="" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />

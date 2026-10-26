@@ -35,7 +35,7 @@ function initials(name) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase()
 }
 
-function ContactRow({ role, name, email, isAdmin, people, clientName, onSave }) {
+function ContactRow({ role, name, email, isAdmin, people, clientName, photo, onSave }) {
   const [editing, setEditing] = useState(false)
   const [invite, setInvite] = useState(null) // null | 'sending' | 'sent'
   const [input, setInput] = useState({ name: '', email: '' })
@@ -141,8 +141,10 @@ function ContactRow({ role, name, email, isAdmin, people, clientName, onSave }) 
         </form>
       ) : email || name ? (
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full text-[11px] font-semibold shrink-0" style={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--hairline)' }} aria-hidden="true">
-            {initials(name || nameFromEmail(email))}
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full overflow-hidden text-[11px] font-semibold shrink-0" style={{ background: 'var(--paper)', color: 'var(--ink)', border: '1px solid var(--hairline)' }} aria-hidden="true">
+            {photo
+              ? <img src={photo} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              : initials(name || nameFromEmail(email))}
           </span>
           <div className="min-w-0">
             <div className="text-[13.5px] truncate" style={{ color: 'var(--ink)' }}>
@@ -179,7 +181,7 @@ function ContactRow({ role, name, email, isAdmin, people, clientName, onSave }) 
   )
 }
 
-export default function AccountTeam({ impl, isAdmin, onChange }) {
+export default function AccountTeam({ impl, isAdmin, onChange, avatars = {} }) {
   const [people, setPeople] = useState([])
 
   useEffect(() => {
@@ -204,6 +206,7 @@ export default function AccountTeam({ impl, isAdmin, onChange }) {
           isAdmin={isAdmin}
           people={people}
           clientName={impl.client_name}
+          photo={avatars[(impl[`${role.key}Email`] || '').toLowerCase()]?.photoUrl}
           onSave={save}
         />
       ))}
