@@ -1,10 +1,14 @@
+import { Link } from 'react-router-dom'
 import bloomreachLogo from '../assets/bloomreach-logo.png'
 
 export default function Navbar({ userInfo, onLogout, title }) {
   return (
     <nav className="bg-white px-6 py-3 flex items-center justify-between" style={{ borderBottom: '1px solid var(--hairline)' }}>
       <div className="flex items-center gap-3">
-        <img src={bloomreachLogo} alt="Bloomreach" className="h-7" />
+        {/* "/" redirects to each person's own home (admin dashboard, partner home, or their one implementation) */}
+        <Link to="/" className="shrink-0 rounded hover:opacity-80 transition-opacity" aria-label="Home">
+          <img src={bloomreachLogo} alt="Bloomreach" className="h-7" />
+        </Link>
         <span className="w-px h-5" style={{ background: 'var(--hairline)' }} />
         <span className="font-display font-medium text-sm tracking-tight" style={{ color: 'var(--ink)' }}>{title || 'Partner Portal'}</span>
       </div>
