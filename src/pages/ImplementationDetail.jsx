@@ -20,6 +20,7 @@ import ContractReviewModal from '../components/ContractReviewModal'
 import { TeamStack } from '../components/ImplCard'
 import RolloutRail from '../components/RolloutRail'
 import { QA_WORKBOOKS } from '../qaWorkbooks'
+import { setupTodos } from '../implStatus'
 
 const DATE_FIELDS = [
   { key: 'planned_completion_date', label: 'Planned Completion', note: 'Set at start' },
@@ -110,29 +111,6 @@ function Section({ title, subtitle, action, children, className = '', id }) {
       {children}
     </Card>
   )
-}
-
-// Internal-tab setup checklist — derived from what's already saved on the
-// implementation, so items tick themselves off as each section is filled in
-// (nothing to maintain by hand). `target` is the Section id it jumps to.
-function setupTodos(impl, documents) {
-  const meters = USAGE_METERS[impl.pricingModel || 'profiles']
-  const limitsSet = meters.filter(m => (impl.usageMetrics || {})[m.key]?.limit).length
-  const team = [['PSM', impl.psmName], ['CSM', impl.csmName], ['AM', impl.amName]]
-  const missingTeam = team.filter(([, name]) => !name).map(([role]) => role)
-  return [
-    { key: 'slack', label: 'Add the Slack channel', done: !!impl.slackChannelId, target: 'setup-connections' },
-    { key: 'workfront', label: 'Link the Workfront project', done: !!impl.workfrontProjectId, target: 'setup-connections' },
-    {
-      key: 'team', label: 'Assign the project team', done: missingTeam.length === 0, target: 'setup-team',
-      detail: missingTeam.length && missingTeam.length < team.length ? `Missing ${missingTeam.join(', ')}` : null,
-    },
-    {
-      key: 'usage', label: 'Add usage limits', done: !!impl.bloomreachOrgId && limitsSet === meters.length, target: 'setup-usage',
-      detail: !impl.bloomreachOrgId ? 'Link the Bloomreach org first' : limitsSet ? `${limitsSet} of ${meters.length} meters set` : null,
-    },
-    { key: 'scope', label: 'Upload the scope of work', done: documents.length > 0, target: 'setup-scope' },
-  ]
 }
 
 function SetupChecklist({ todos }) {
@@ -758,7 +736,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const backHref = canViewAll ? '/admin' : (userInfo?.implementations?.length > 1 ? '/select' : null)
   const backLabel = canViewAll ? '← All implementations' : '← My implementations'
 
-  const todos = canViewAll ? setupTodos(impl, documents) : []
+  const todos = canViewAll ? setupTodos(impl, impl.documents ? documents : null) : []
   const todosLeft = todos.filter(t => !t.done).length
 
   const tabs = [

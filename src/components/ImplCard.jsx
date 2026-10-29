@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { IMPLEMENTATION_STATUSES } from '../api'
-import { stepsDone, openRaidCount, daysUntil, usageIssue, viewOf, nameFromEmail } from '../implStatus'
+import { stepsDone, openRaidCount, daysUntil, setupTodos, viewOf, nameFromEmail } from '../implStatus'
 import RolloutRail from './RolloutRail'
 
 // Implementation card, shared by the admin dashboard and the partner home
@@ -75,10 +75,12 @@ function Rail({ label, done, total, color }) {
   )
 }
 
-export default function ImplCard({ impl, tpKeys, qaKeys, showPartner, to, showUsage = true, avatars = {}, index = 0 }) {
+// showTodos: the Internal-tab setup checklist is Bloomreach-only, so the
+// partner home page leaves it off.
+export default function ImplCard({ impl, tpKeys, qaKeys, showPartner, to, showTodos = true, avatars = {}, index = 0 }) {
   const view = viewOf(impl)
   const openRaid = openRaidCount(impl)
-  const usageProblem = showUsage && view === 'active' && usageIssue(impl)
+  const todosLeft = showTodos && view === 'active' ? setupTodos(impl, impl.documents).filter(t => !t.done) : []
   const status = IMPLEMENTATION_STATUSES[impl.status] ?? IMPLEMENTATION_STATUSES.active
 
   return (
@@ -95,13 +97,17 @@ export default function ImplCard({ impl, tpKeys, qaKeys, showPartner, to, showUs
         <TeamStack impl={impl} avatars={avatars} />
       </div>
 
-      {(view !== 'active' || impl.planned_completion_date || openRaid > 0 || usageProblem) && (
+      {(view !== 'active' || impl.planned_completion_date || openRaid > 0 || todosLeft.length > 0) && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {view === 'active'
             ? <DueLabel impl={impl} />
             : <Flag tone="muted"><span style={{ color: status.color }}>{status.label}</span></Flag>}
           {view === 'active' && openRaid > 0 && <Flag tone="rust">{openRaid} open RAID</Flag>}
-          {usageProblem && <Flag tone="amber" title={`Usage data ${usageProblem}`}>Usage data</Flag>}
+          {todosLeft.length > 0 && (
+            <Flag tone="amber" title={`To do: ${todosLeft.map(t => t.label).join(' · ')}`}>
+              {todosLeft.length} to-do{todosLeft.length === 1 ? '' : 's'}
+            </Flag>
+          )}
         </div>
       )}
 

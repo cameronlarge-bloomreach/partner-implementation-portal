@@ -5,7 +5,7 @@ import {
 } from '../api'
 import Navbar from '../components/Navbar'
 import ImplCard from '../components/ImplCard'
-import { openRaidCount, isOverdue, usageIssue, viewOf, nameFromEmail, teamEmails } from '../implStatus'
+import { openRaidCount, isOverdue, setupTodos, viewOf, nameFromEmail, teamEmails } from '../implStatus'
 import ModalShell from '../components/ModalShell'
 import { SkeletonBar } from '../components/Skeleton'
 import { SidebarPanel, CollapsibleList } from '../components/Sidebar'
@@ -13,13 +13,13 @@ import { SidebarPanel, CollapsibleList } from '../components/Sidebar'
 const ISSUES = {
   raid: { label: 'Open RAID', test: i => openRaidCount(i) > 0 },
   overdue: { label: 'Overdue', test: isOverdue },
-  usage: { label: 'Usage data', test: i => !!usageIssue(i) },
+  todos: { label: 'Setup to-dos', test: i => setupTodos(i, i.documents).some(t => !t.done) },
 }
 const needsAttention = i => Object.values(ISSUES).some(x => x.test(i))
 
 const VIEWS = {
   active: { label: 'Active', subtitle: 'Signed and in progress' },
-  attention: { label: 'Needs attention', subtitle: 'Active implementations with open RAID items, overdue dates or usage data to review' },
+  attention: { label: 'Needs attention', subtitle: 'Active implementations with open RAID items, overdue dates or setup still to do' },
   pending: { label: 'Pending', subtitle: 'Set up in the portal, not yet signed with Bloomreach' },
   closed: { label: 'Closed', subtitle: 'Finished implementations' },
 }

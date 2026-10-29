@@ -153,7 +153,8 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, isViewer, acc
     qaSteps,
     raid: raidRows.map(shapeRaid),
     scope: isViewer ? [] : (scopeRows || []).map(shapeScope),
-    documents: isViewer ? [] : (docRows || []).map(shapeDoc),
+    // null (not []) when hidden, so "can't see" isn't mistaken for "none uploaded".
+    documents: isViewer ? null : (docRows || []).map(shapeDoc),
     meetingNotes: canViewInternal ? noteRows.map(shapeNote) : [],
     bloomreachOrgId: canViewInternal ? (impl.bloomreach_org_id || '') : undefined,
     bloomreachOrgName: canViewInternal ? (impl.bloomreach_org_name || '') : undefined,

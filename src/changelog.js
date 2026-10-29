@@ -9,6 +9,7 @@ export const CHANGELOG = [
     date: '29 October 2026',
     items: [
       'New "Setup to-do" checklist at the top of each implementation\'s Internal tab — Slack channel, Workfront project, project team, usage limits and scope of work. Items tick themselves off as each is filled in, click one to jump to it, and the Internal tab shows how many are left.',
+      'Dashboard cards now show "N to-dos" for outstanding setup instead of the old "Usage data" flag, and the Needs attention view filters by Setup to-dos.',
       'New admin-only "QA Tickets" page (dashboard → QA Tickets) — every ClickUp ticket raised to SDC from a QA workbook, across all clients, with its live ClickUp status, priority, assignees and latest comment (click through for the full comment thread).',
     ],
   },

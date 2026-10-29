@@ -153,7 +153,7 @@ export default function PartnerSelect({ userInfo, onLogout }) {
                     tpKeys={tpKeys}
                     qaKeys={qaKeys}
                     showPartner={partnerNames.length > 1}
-                    showUsage={false}
+                    showTodos={false}
                     avatars={avatars}
                     index={i}
                   />
