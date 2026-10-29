@@ -5,6 +5,13 @@
 // from git history.
 export const CHANGELOG = [
   {
+    version: '2026-10-29',
+    date: '29 October 2026',
+    items: [
+      'New admin-only "QA Tickets" page (dashboard → QA Tickets) — every ClickUp ticket raised to SDC from a QA workbook, across all clients, with its live ClickUp status, priority, assignees and latest comment (click through for the full comment thread).',
+    ],
+  },
+  {
     version: '2026-10-02',
     date: '2 October 2026',
     items: [

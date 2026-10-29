@@ -307,6 +307,11 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
               </Link>
             )}
             {isAdmin && (
+              <Link to="/admin/qa-tickets" className="text-sm font-medium px-4 py-2 rounded-[10px]" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
+                QA Tickets
+              </Link>
+            )}
+            {isAdmin && (
               <Link to="/admin/permissions" className="text-sm font-medium px-4 py-2 rounded-[10px]" style={{ border: '1px solid var(--hairline)', color: 'var(--ink)' }}>
                 Permissions
               </Link>

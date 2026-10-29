@@ -377,6 +377,35 @@ export async function attachTicketToWorkbook(implementationId, stepKey, ticket) 
   return saveQAWorkbook(null, implementationId, stepKey, data)
 }
 
+// Every ticket raised from a QA workbook, across all clients, with live
+// ClickUp state merged in (admin-only page). The ticket list comes from
+// Supabase so it still renders if ClickUp is slow or down — `live` is just
+// null for those rows.
+export async function getQATickets() {
+  const { data, error } = await supabase.from('qa_workbook_entries')
+    .select('implementation_id, step_key, data, implementations(client_name, partner_name, status)')
+    .not('data->ticket', 'is', null)
+  if (error) return fail(error)
+  const tickets = (data || []).filter(r => r.data?.ticket?.id).map(r => ({
+    ...r.data.ticket,
+    implementationId: r.implementation_id,
+    stepKey: r.step_key,
+    stepLabel: QA_WORKBOOKS[r.step_key]?.label || r.step_key,
+    clientName: r.implementations?.client_name || '',
+    partnerName: r.implementations?.partner_name || '',
+    implStatus: r.implementations?.status || '',
+  }))
+  if (!tickets.length) return { ok: true, tickets }
+  const res = await supabase.functions.invoke('sdc-ticket-status', { body: { taskIds: tickets.map(t => t.id) } })
+  let liveError = null
+  if (res.error) {
+    const detail = await res.error.context?.json?.().catch(() => null)
+    liveError = detail?.error || res.error.message
+  }
+  const live = res.data?.tasks || {}
+  return { ok: true, liveError, tickets: tickets.map(t => ({ ...t, live: live[t.id] && !live[t.id].error ? live[t.id] : null })) }
+}
+
 export async function updateDates(_token, implementationId, dates) {
   const patch = {}
   for (const key of IMPL_DATE_KEYS) {

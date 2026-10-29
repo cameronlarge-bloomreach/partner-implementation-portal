@@ -10,6 +10,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import ImplementationDetail from './pages/ImplementationDetail'
 import Analytics from './pages/Analytics'
 import Permissions from './pages/Permissions'
+import QATickets from './pages/QATickets'
 import WhatsNewModal from './components/WhatsNewModal'
 
 function defaultRouteFor(userInfo) {
@@ -145,6 +146,16 @@ export default function App() {
               : !userInfo?.isAdmin
               ? <Navigate to="/" replace />
               : <Analytics credential={credential} userInfo={userInfo} onLogout={handleLogout} />
+          }
+        />
+        <Route
+          path="/admin/qa-tickets"
+          element={
+            !credential
+              ? <Navigate to="/login" replace />
+              : !userInfo?.isAdmin
+              ? <Navigate to="/" replace />
+              : <QATickets userInfo={userInfo} onLogout={handleLogout} />
           }
         />
         <Route
