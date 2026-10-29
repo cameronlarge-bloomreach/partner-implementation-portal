@@ -87,9 +87,9 @@ function fmt(n) {
   return n === null || n === undefined ? '—' : Number(n).toLocaleString()
 }
 
-function Card({ children, className = '', style = {} }) {
+function Card({ children, className = '', style = {}, id }) {
   return (
-    <div className={`bg-white rounded-2xl p-5 ${className}`} style={{ border: '1px solid var(--hairline)', ...style }}>
+    <div id={id} className={`bg-white rounded-2xl p-5 scroll-mt-4 ${className}`} style={{ border: '1px solid var(--hairline)', ...style }}>
       {children}
     </div>
   )
@@ -97,9 +97,9 @@ function Card({ children, className = '', style = {} }) {
 
 // Card with a title row (title, optional count/subtitle, optional action on
 // the right) — the building block for both tabs.
-function Section({ title, subtitle, action, children, className = '' }) {
+function Section({ title, subtitle, action, children, className = '', id }) {
   return (
-    <Card className={className}>
+    <Card className={className} id={id}>
       <div className="flex items-start justify-between gap-3 mb-3.5">
         <div className="min-w-0">
           <h2 className="font-display text-[15px] font-semibold" style={{ color: 'var(--ink)' }}>{title}</h2>
@@ -109,6 +109,65 @@ function Section({ title, subtitle, action, children, className = '' }) {
       </div>
       {children}
     </Card>
+  )
+}
+
+// Internal-tab setup checklist — derived from what's already saved on the
+// implementation, so items tick themselves off as each section is filled in
+// (nothing to maintain by hand). `target` is the Section id it jumps to.
+function setupTodos(impl, documents) {
+  const meters = USAGE_METERS[impl.pricingModel || 'profiles']
+  const limitsSet = meters.filter(m => (impl.usageMetrics || {})[m.key]?.limit).length
+  const team = [['PSM', impl.psmName], ['CSM', impl.csmName], ['AM', impl.amName]]
+  const missingTeam = team.filter(([, name]) => !name).map(([role]) => role)
+  return [
+    { key: 'slack', label: 'Add the Slack channel', done: !!impl.slackChannelId, target: 'setup-connections' },
+    { key: 'workfront', label: 'Link the Workfront project', done: !!impl.workfrontProjectId, target: 'setup-connections' },
+    {
+      key: 'team', label: 'Assign the project team', done: missingTeam.length === 0, target: 'setup-team',
+      detail: missingTeam.length && missingTeam.length < team.length ? `Missing ${missingTeam.join(', ')}` : null,
+    },
+    {
+      key: 'usage', label: 'Add usage limits', done: !!impl.bloomreachOrgId && limitsSet === meters.length, target: 'setup-usage',
+      detail: !impl.bloomreachOrgId ? 'Link the Bloomreach org first' : limitsSet ? `${limitsSet} of ${meters.length} meters set` : null,
+    },
+    { key: 'scope', label: 'Upload the scope of work', done: documents.length > 0, target: 'setup-scope' },
+  ]
+}
+
+function SetupChecklist({ todos }) {
+  const done = todos.filter(t => t.done).length
+  const pct = Math.round(done / todos.length * 100)
+  return (
+    <Section
+      title="Setup to-do"
+      subtitle={done === todos.length ? 'Everything on the Internal tab is filled in' : `${done} of ${todos.length} done · ticks itself off as each section is filled in`}
+    >
+      <div className="h-1.5 rounded-full overflow-hidden mb-3.5" style={{ background: 'var(--hairline)' }}>
+        <div className="h-full rounded-full transition-[width] duration-300" style={{ width: `${pct}%`, background: done === todos.length ? 'var(--moss)' : 'var(--gold)' }} />
+      </div>
+      <ul className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+        {todos.map(t => (
+          <li key={t.key}>
+            <button
+              type="button"
+              onClick={() => document.getElementById(t.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="w-full flex items-start gap-2.5 text-left rounded-lg px-2.5 py-2 transition-colors hover:bg-[var(--paper)]"
+            >
+              <span className="mt-0.5 w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-[11px] font-bold"
+                style={t.done ? { background: 'var(--moss)', color: '#fff' } : { border: '1.5px solid var(--hairline)' }}
+                aria-hidden="true">{t.done ? '✓' : ''}</span>
+              <span className="min-w-0">
+                <span className="block text-[13px]" style={{ color: t.done ? 'var(--muted)' : 'var(--ink)', textDecoration: t.done ? 'line-through' : 'none' }}>
+                  {t.label}<span className="sr-only">{t.done ? ' (done)' : ' (to do)'}</span>
+                </span>
+                {!t.done && t.detail && <span className="block text-[11.5px]" style={{ color: 'var(--muted)' }}>{t.detail}</span>}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Section>
   )
 }
 
@@ -699,6 +758,9 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
   const backHref = canViewAll ? '/admin' : (userInfo?.implementations?.length > 1 ? '/select' : null)
   const backLabel = canViewAll ? '← All implementations' : '← My implementations'
 
+  const todos = canViewAll ? setupTodos(impl, documents) : []
+  const todosLeft = todos.filter(t => !t.done).length
+
   const tabs = [
     { key: 'overview', label: 'Overview' },
     ...(canViewAll ? [{ key: 'internal', label: 'Internal' }] : []),
@@ -833,6 +895,10 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                 style={activeTab === t.key ? { background: 'var(--ink)', color: '#fff' } : { color: 'var(--ink)' }}>
                 {t.label}
                 {t.key === 'internal' && <span className="ml-1.5 text-[11px]" style={{ opacity: 0.6 }}>Bloomreach only</span>}
+                {t.key === 'internal' && todosLeft > 0 && (
+                  <span className="ml-1.5 text-[10.5px] font-semibold px-1.5 py-px rounded-full" style={{ background: 'var(--gold)', color: '#000' }}
+                    title={`${todosLeft} setup item${todosLeft === 1 ? '' : 's'} to do`}>{todosLeft}</span>
+                )}
               </button>
             ))}
           </div>
@@ -1006,10 +1072,12 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
         )}
 
         {/* Internal — admin, SDC and viewers only, hidden from partners */}
-        {activeTab === 'internal' && canViewAll && (
+        {activeTab === 'internal' && canViewAll && (<>
+          <div className="mb-5"><SetupChecklist todos={todos} /></div>
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
             <div className="flex flex-col gap-5 min-w-0">
               <Section
+                id="setup-usage"
                 title="Bloomreach org & usage"
                 subtitle={impl.bloomreachOrgId ? undefined : 'Not linked yet — ask Claude to match it, or link it manually'}
                 action={isAdmin && !editingOrgLink && (
@@ -1156,7 +1224,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
             </div>
 
             <div className="flex flex-col gap-5 min-w-0">
-              <Section title="Account team" subtitle="The PSM is credited and notified on SDC tickets raised from here">
+              <Section id="setup-team" title="Account team" subtitle="The PSM is credited and notified on SDC tickets raised from here">
                 <AccountTeam impl={impl} isAdmin={isAdmin} onChange={patchImpl} avatars={avatars} />
               </Section>
 
@@ -1200,7 +1268,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
                 </form>
               </Section>
 
-              <Section title="Connections" subtitle="Where updates post and where hours sync from">
+              <Section id="setup-connections" title="Connections" subtitle="Where updates post and where hours sync from">
                 <form onSubmit={handleSaveSlackChannel} className="mb-4">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-[12.5px] font-medium" style={{ color: 'var(--ink)' }}>Slack channel</span>
@@ -1240,7 +1308,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               </Section>
 
               {!isViewer && (
-                <Section title="Scope of work" subtitle="Visible to the partner on their Overview tab">
+                <Section id="setup-scope" title="Scope of work" subtitle="Visible to the partner on their Overview tab">
                   <ImplementationDocuments credential={credential} implementationId={id} documents={documents} editable={isAdmin} onChange={setDocuments} onExtractUsage={isAdmin ? handleExtractUsage : undefined} />
                   {extracting && (
                     <div className="mt-2.5">
@@ -1266,7 +1334,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               )}
             </div>
           </div>
-        )}
+        </>)}
       </div>
 
       {openWorkbookStep && (
