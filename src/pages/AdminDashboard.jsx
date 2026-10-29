@@ -239,7 +239,8 @@ export default function AdminDashboard({ credential, userInfo, onLogout }) {
   // filter, so the counts always add up to what's shown.
   const partnerCounts = {}
   for (const i of inView.filter(matchesPerson)) if (i.partner_name) partnerCounts[i.partner_name] = (partnerCounts[i.partner_name] || 0) + 1
-  const partnerNames = Object.keys(partnerCounts).sort((a, b) => a.localeCompare(b))
+  // Busiest partners first; alphabetical among partners with the same count.
+  const partnerNames = Object.keys(partnerCounts).sort((a, b) => partnerCounts[b] - partnerCounts[a] || a.localeCompare(b))
   const allPartners = Array.from(new Set(implementations.map(i => i.partner_name).filter(Boolean))).sort()
 
   const selfEmail = (userInfo?.email || '').toLowerCase()
