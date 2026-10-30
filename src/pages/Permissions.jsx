@@ -62,6 +62,32 @@ function Avatar({ person, size = 40 }) {
   )
 }
 
+function latest(...dates) {
+  const times = dates.filter(Boolean).map(d => new Date(d).getTime())
+  return times.length ? new Date(Math.max(...times)).toISOString() : null
+}
+
+// "Active today", "Active 3 days ago" … session refreshes are roughly
+// hourly, so anything finer than a day would be false precision.
+function lastActiveLabel(iso) {
+  if (!iso) return ''
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+  if (days <= 0) return 'Active today'
+  if (days === 1) return 'Active yesterday'
+  if (days < 30) return `Active ${days} days ago`
+  return `Active ${new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`
+}
+
+function LastActive({ person, className = '' }) {
+  const label = lastActiveLabel(person.lastActiveAt)
+  if (!label) return null
+  return (
+    <span className={`text-[11px] whitespace-nowrap ${className}`} style={{ color: 'var(--muted)' }} title={new Date(person.lastActiveAt).toLocaleString()}>
+      {label}
+    </span>
+  )
+}
+
 function StatusPill({ person }) {
   const [label, bg, fg] = !person.hasAccount
     ? ['No account yet', 'var(--paper)', 'var(--muted)']
@@ -237,6 +263,7 @@ function ManageModal({ person, partners, isSelf, onGrant, onRevoke, onInvite, on
               {person.name && <p className="text-[13px] truncate" style={{ color: 'var(--muted)' }}>{person.email}</p>}
               <div className="flex flex-wrap items-center gap-2 mt-1.5">
                 <StatusPill person={person} />
+                <LastActive person={person} />
                 {(person.jobTitle || person.typedPartner) && (
                   <span className="text-xs" style={{ color: 'var(--muted)' }}>
                     {[person.jobTitle, person.typedPartner && `says they’re with ${person.typedPartner}`].filter(Boolean).join(' · ')}
@@ -352,7 +379,10 @@ function PersonCard({ person, index, isSelf, showPartners, partners, onManage, o
           </div>
           <div className="text-xs truncate" style={{ color: 'var(--muted)' }}>{person.name ? person.email : person.jobTitle || ' '}</div>
         </div>
-        <StatusPill person={person} />
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <StatusPill person={person} />
+          <LastActive person={person} />
+        </div>
       </div>
 
       <div className="flex items-end justify-between gap-2 mt-auto">
@@ -495,6 +525,9 @@ export default function Permissions({ userInfo, onLogout }) {
         // recorded sign-in counts as having actually used the portal.
         signedIn: !!profile && (!data.signIns || !!data.signIns[profile.id]?.last_sign_in_at),
         lastSignInAt: (profile && data.signIns?.[profile.id]?.last_sign_in_at) || null,
+        // Session refreshes track real use; fall back to the last password
+        // sign-in when every session has been signed out.
+        lastActiveAt: latest(data.signIns?.[profile?.id]?.last_active_at, data.signIns?.[profile?.id]?.last_sign_in_at),
         declined: !!profile?.declined,
         userId: profile?.id || null,
         createdAt: profile?.created_at || null,
