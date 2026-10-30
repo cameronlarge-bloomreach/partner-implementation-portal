@@ -141,6 +141,8 @@ function buildImplResponse(impl, tpRows, raidRows, isAdmin, isSDC, isViewer, acc
     partner_name: impl.partner_name,
     client_name: impl.client_name,
     status: impl.status || 'active',
+    // RAG health — set by admins, visible to everyone including partners.
+    rag: { status: impl.rag_status || '', note: impl.rag_note || '', updatedAt: impl.rag_updated_at || '', updatedBy: impl.rag_updated_by || '' },
     workfrontHours: shapeWorkfrontHours(hoursRows),
     workfrontProjectId: canViewInternal ? (impl.workfront_project_id || '') : undefined,
     bauHandoverStatus: canViewInternal ? (impl.bau_handover_status || 'N') : undefined,
@@ -548,6 +550,20 @@ export const IMPLEMENTATION_STATUSES = {
   pending: { key: 'pending', label: 'Pending', bg: '#FFFCE8', color: '#8A7A00' },
   active: { key: 'active', label: 'Active', bg: 'var(--paper)', color: 'var(--muted)' },
   complete: { key: 'complete', label: 'Closed', bg: 'var(--moss-bg)', color: 'var(--moss)' },
+}
+
+export const RAG_STATUSES = {
+  green: { key: 'green', label: 'On track', short: 'Green', color: 'var(--moss)', bg: 'var(--moss-bg)' },
+  amber: { key: 'amber', label: 'At risk', short: 'Amber', color: '#B07600', bg: '#FFF4DC' },
+  red: { key: 'red', label: 'Off track', short: 'Red', color: 'var(--rust)', bg: 'var(--rust-bg)' },
+}
+
+export async function updateRag(_token, implementationId, { status, note, updatedBy }) {
+  const rag = { status, note: (note || '').trim(), updatedAt: new Date().toISOString(), updatedBy: updatedBy || '' }
+  const { error } = await supabase.from('implementations').update({
+    rag_status: rag.status, rag_note: rag.note, rag_updated_at: rag.updatedAt, rag_updated_by: rag.updatedBy,
+  }).eq('id', implementationId)
+  return error ? fail(error) : { ok: true, rag }
 }
 
 export async function updateImplementationStatus(_token, implementationId, status) {

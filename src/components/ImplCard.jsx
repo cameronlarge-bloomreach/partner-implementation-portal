@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { IMPLEMENTATION_STATUSES } from '../api'
 import { stepsDone, openRaidCount, daysUntil, setupTodos, viewOf, nameFromEmail } from '../implStatus'
 import RolloutRail from './RolloutRail'
+import RagBadge from './RagBadge'
 
 // Implementation card, shared by the admin dashboard and the partner home
 // page so both read the same way.
@@ -82,6 +83,7 @@ export default function ImplCard({ impl, tpKeys, qaKeys, showPartner, to, showTo
   const openRaid = openRaidCount(impl)
   const todosLeft = showTodos && view === 'active' ? setupTodos(impl, impl.documents).filter(t => !t.done) : []
   const status = IMPLEMENTATION_STATUSES[impl.status] ?? IMPLEMENTATION_STATUSES.active
+  const showRag = view === 'active' && !!impl.rag?.status
 
   return (
     <Link
@@ -97,11 +99,12 @@ export default function ImplCard({ impl, tpKeys, qaKeys, showPartner, to, showTo
         <TeamStack impl={impl} avatars={avatars} />
       </div>
 
-      {(view !== 'active' || impl.planned_completion_date || openRaid > 0 || todosLeft.length > 0) && (
+      {(view !== 'active' || showRag || impl.planned_completion_date || openRaid > 0 || todosLeft.length > 0) && (
         <div className="flex flex-wrap gap-1.5 mt-2">
           {view === 'active'
             ? <DueLabel impl={impl} />
             : <Flag tone="muted"><span style={{ color: status.color }}>{status.label}</span></Flag>}
+          {showRag && <RagBadge rag={impl.rag} />}
           {view === 'active' && openRaid > 0 && <Flag tone="rust">{openRaid} open RAID</Flag>}
           {todosLeft.length > 0 && (
             <Flag tone="amber" title={`To do: ${todosLeft.map(t => t.label).join(' · ')}`}>

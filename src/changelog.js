@@ -5,6 +5,14 @@
 // from git history.
 export const CHANGELOG = [
   {
+    version: '2026-10-30',
+    date: '30 October 2026',
+    items: [
+      'New RAG status on every implementation (Overview → RAG status) — admins set Green / Amber / Red with a note on why. Partners see it too, on their implementation page and home cards, along with who last updated it and when.',
+      'Dashboard cards show the RAG colour, and Needs attention has a new "Amber / Red" filter.',
+    ],
+  },
+  {
     version: '2026-10-29',
     date: '29 October 2026',
     items: [

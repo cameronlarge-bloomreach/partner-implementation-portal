@@ -11,6 +11,7 @@ import { SkeletonBar } from '../components/Skeleton'
 import { SidebarPanel, CollapsibleList } from '../components/Sidebar'
 
 const ISSUES = {
+  rag: { label: 'Amber / Red', test: i => i.rag?.status === 'amber' || i.rag?.status === 'red' },
   raid: { label: 'Open RAID', test: i => openRaidCount(i) > 0 },
   overdue: { label: 'Overdue', test: isOverdue },
   todos: { label: 'Setup to-dos', test: i => setupTodos(i, i.documents).some(t => !t.done) },
@@ -19,7 +20,7 @@ const needsAttention = i => Object.values(ISSUES).some(x => x.test(i))
 
 const VIEWS = {
   active: { label: 'Active', subtitle: 'Signed and in progress' },
-  attention: { label: 'Needs attention', subtitle: 'Active implementations with open RAID items, overdue dates or setup still to do' },
+  attention: { label: 'Needs attention', subtitle: 'Active implementations rated amber or red, with open RAID items, overdue dates or setup still to do' },
   pending: { label: 'Pending', subtitle: 'Set up in the portal, not yet signed with Bloomreach' },
   closed: { label: 'Closed', subtitle: 'Finished implementations' },
 }

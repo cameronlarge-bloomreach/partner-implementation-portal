@@ -8,7 +8,7 @@ import {
   addMeetingNote, deleteMeetingNote, updateBloomreachOrgLink,
   updatePricingModel, updateBloomreachRegion, upsertUsageMetric, USAGE_METERS,
   CONTRACT_ALLOWANCES, extractContractLimits,
-  IMPLEMENTATION_STATUSES, listStaffAvatars,
+  IMPLEMENTATION_STATUSES, listStaffAvatars, RAG_STATUSES, updateRag,
 } from '../api'
 import Navbar from '../components/Navbar'
 import StepsManager from '../components/StepsManager'
@@ -18,9 +18,10 @@ import QAWorkbookModal from '../components/QAWorkbookModal'
 import RaiseTicketModal from '../components/RaiseTicketModal'
 import ContractReviewModal from '../components/ContractReviewModal'
 import { TeamStack } from '../components/ImplCard'
+import RagBadge from '../components/RagBadge'
 import RolloutRail from '../components/RolloutRail'
 import { QA_WORKBOOKS } from '../qaWorkbooks'
-import { setupTodos } from '../implStatus'
+import { setupTodos, nameFromEmail } from '../implStatus'
 
 const DATE_FIELDS = [
   { key: 'planned_completion_date', label: 'Planned Completion', note: 'Set at start' },
@@ -110,6 +111,82 @@ function Section({ title, subtitle, action, children, className = '', id }) {
       </div>
       {children}
     </Card>
+  )
+}
+
+// RAG health on the Overview tab — partners see it read-only; admins pick a
+// colour and say why. Saves the colour and note together so they never drift.
+function RagCard({ rag, canEdit, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [status, setStatus] = useState(rag.status)
+  const [note, setNote] = useState(rag.note)
+  const [saving, setSaving] = useState(false)
+  const meta = RAG_STATUSES[rag.status]
+
+  function startEdit() {
+    setStatus(rag.status || 'green')
+    setNote(rag.note)
+    setEditing(true)
+  }
+
+  async function save(e) {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      await onSave({ status, note })
+      setEditing(false)
+    } catch { /* silent */ }
+    setSaving(false)
+  }
+
+  const updated = rag.updatedAt && `Updated ${formatDate(rag.updatedAt.slice(0, 10))}${rag.updatedBy ? ` by ${rag.updatedBy.includes('@') ? nameFromEmail(rag.updatedBy) : rag.updatedBy}` : ''}`
+
+  return (
+    <Section
+      title="RAG status"
+      subtitle={editing ? 'Visible to the partner too' : updated || (canEdit ? 'Not set yet · visible to the partner too' : null)}
+      action={canEdit && !editing && (
+        <button onClick={startEdit} className="text-xs font-semibold px-3 py-1.5 rounded-lg" style={{ background: 'var(--gold)', color: '#000' }}>
+          {meta ? 'Update' : 'Set'}
+        </button>
+      )}
+    >
+      {editing ? (
+        <form onSubmit={save} className="space-y-2.5">
+          <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="RAG status">
+            {Object.values(RAG_STATUSES).map(m => (
+              <button key={m.key} type="button" role="radio" aria-checked={status === m.key} onClick={() => setStatus(m.key)}
+                className="flex flex-col items-center gap-1 rounded-xl py-2 text-[12px] font-semibold transition-colors"
+                style={status === m.key
+                  ? { background: m.bg, color: m.color, border: `1.5px solid ${m.color}` }
+                  : { background: '#fff', color: 'var(--muted)', border: '1.5px solid var(--hairline)' }}>
+                <span className="w-3 h-3 rounded-full" style={{ background: m.color, opacity: status === m.key ? 1 : 0.45 }} aria-hidden="true" />
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
+            placeholder={status === 'green' ? 'Optional: anything worth noting' : 'Why, and what’s being done about it'}
+            className="w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none bg-white resize-none" style={{ border: '1px solid var(--hairline)' }} />
+          <div className="flex gap-2">
+            <button type="submit" disabled={saving} className="text-xs font-semibold px-3 py-1.5 rounded-lg disabled:opacity-50" style={{ background: 'var(--gold)', color: '#000' }}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+            <button type="button" onClick={() => setEditing(false)} className="text-xs px-2 py-1.5" style={{ color: 'var(--muted)' }}>Cancel</button>
+          </div>
+        </form>
+      ) : meta ? (
+        <div className="flex items-start gap-3">
+          <span className="w-3.5 h-3.5 rounded-full shrink-0 mt-0.5" style={{ background: meta.color, boxShadow: `0 0 0 4px ${meta.bg}` }} aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-[13.5px] font-semibold" style={{ color: meta.color }}>{meta.short} · {meta.label}</p>
+            {rag.note && <p className="text-xs mt-1 leading-relaxed whitespace-pre-line" style={{ color: 'var(--ink)' }}>{rag.note}</p>}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>No RAG status set yet.</p>
+      )}
+    </Section>
   )
 }
 
@@ -553,6 +630,12 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
     setSavingStatus(false)
   }
 
+  async function handleSaveRag({ status, note }) {
+    const res = await updateRag(credential, id, { status, note, updatedBy: userInfo?.name || nameFromEmail(userInfo?.email) })
+    if (!res.ok) throw new Error(res.error)
+    patchImpl({ rag: res.rag })
+  }
+
   async function handleSaveSlackChannel(e) {
     e.preventDefault()
     setSavingSlack(true)
@@ -830,6 +913,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ background: statusMeta.bg, color: statusMeta.color, border: '1px solid var(--hairline)' }}>
                 {statusMeta.label}
               </span>
+              <RagBadge rag={impl.rag} />
             </div>
             <h1 className="font-display text-[28px] font-semibold leading-tight" style={{ color: 'var(--ink)' }}>{impl.client_name}</h1>
           </div>
@@ -985,6 +1069,7 @@ export default function ImplementationDetail({ credential, userInfo, onLogout })
             </div>
 
             <div className="flex flex-col gap-5 min-w-0">
+              <RagCard rag={impl.rag} canEdit={isAdmin} onSave={handleSaveRag} />
               <Section title="Key dates">
                 <dl className="divide-y divide-[var(--hairline)]">
                   {DATE_FIELDS.map(f => {
