@@ -876,8 +876,13 @@ export async function getAllAccess() {
     ])
     const firstError = [profiles, access, admins, sdc, viewers, partnerGrants, impls].find(r => r.error)
     if (firstError) throw firstError.error
+    // Sign-in timestamps live in auth.users (sign-in-status.sql). If that
+    // function isn't deployed yet, signIns stays null and the page falls
+    // back to treating every profile as signed in.
+    const signIns = await supabase.rpc('user_sign_ins')
     return {
       profiles: profiles.data,
+      signIns: signIns.error ? null : Object.fromEntries(signIns.data.map(s => [s.id, s])),
       access: access.data,
       admins: (admins.data || []).map(a => a.email),
       sdc: (sdc.data || []).map(a => a.email),

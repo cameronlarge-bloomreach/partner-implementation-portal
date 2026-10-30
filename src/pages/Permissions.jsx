@@ -67,6 +67,8 @@ function StatusPill({ person }) {
     ? ['No account yet', 'var(--paper)', 'var(--muted)']
     : person.declined
     ? ['Declined', 'var(--rust-bg)', 'var(--rust)']
+    : !person.signedIn
+    ? ['Invited', '#dff1f9', '#015f86']
     : !person.hasAnyAccess
     ? ['Awaiting access', '#fff4bf', '#6b5600']
     : ['Active', 'var(--moss-bg)', 'var(--moss)']
@@ -489,6 +491,10 @@ export default function Permissions({ userInfo, onLogout }) {
         jobTitle: profile?.job_title || '',
         typedPartner: profile?.partner_name || '',
         hasAccount: !!profile,
+        // Invited accounts exist before the person ever logs in, so only a
+        // recorded sign-in counts as having actually used the portal.
+        signedIn: !!profile && (!data.signIns || !!data.signIns[profile.id]?.last_sign_in_at),
+        lastSignInAt: (profile && data.signIns?.[profile.id]?.last_sign_in_at) || null,
         declined: !!profile?.declined,
         userId: profile?.id || null,
         createdAt: profile?.created_at || null,
